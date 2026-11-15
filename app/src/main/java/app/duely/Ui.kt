@@ -43,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -60,9 +61,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.input.KeyboardType
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -86,13 +88,12 @@ fun DuelyTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun Root(vm: VM) {
+    val context = LocalContext.current
     val reminders by vm.reminders.collectAsState()
     val states by vm.states.collectAsState()
     val today = LocalDate.now()
     val cur = YearMonth.from(today)
-    val earliest = remember(reminders, states) {
-        (reminders.map { YearMonth.parse(it.startMonth) } + states.map { YearMonth.parse(it.period) } + cur).min()
-    }
+    val earliest = remember(reminders, states) { earliestMonth(reminders, states, cur) }
     val previous = remember(reminders, states, earliest, today) {
         var count = 0
         var oldest: YearMonth? = null
@@ -115,46 +116,24 @@ fun Root(vm: VM) {
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { editing = null; formOpen = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Add reminder")
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SmallFloatingActionButton(onClick = { Notifier.runTest(context) }) { Text("T") }
+                FloatingActionButton(onClick = { editing = null; formOpen = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add reminder")
+                }
             }
         }
     ) { pad ->
         key(earliest) {
-            val total = ChronoUnit.MONTHS.between(earliest, cur).toInt() + 1200
             val curPage = ChronoUnit.MONTHS.between(earliest, cur).toInt()
+            val total = curPage + 1200
             val pager = rememberPagerState(
                 initialPage = ChronoUnit.MONTHS.between(earliest, shown).toInt().coerceIn(0, total - 1)
             ) { total }
             LaunchedEffect(pager) {
                 snapshotFlow { pager.settledPage }.collect { shown = earliest.plusMonths(it.toLong()) }
             }
-            val badge = remember(reminders, states, shown, today) {
-                occurrencesFor(shown, reminders, states).count { it.overdue(today) }
-            }
             Column(Modifier.padding(pad).fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
-                        enabled = pager.currentPage > 0
-                    ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month") }
-                    Row(
-                        Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(shown.format(monthFmt), style = MaterialTheme.typography.titleLarge)
-                        if (badge > 0) {
-                            Badge(Modifier.padding(start = 8.dp), containerColor = Red) { Text("$badge") }
-                        }
-                        if (shown != cur) {
-                            TextButton(onClick = { scope.launch { pager.animateScrollToPage(curPage) } }) { Text("Today") }
-                        }
-                    }
-                    IconButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
-                    }
-                }
                 val oldest = previous.second
                 if (previous.first > 0 && oldest != null) {
                     Card(
@@ -166,16 +145,29 @@ fun Root(vm: VM) {
                         Text("${previous.first} overdue in previous months", Modifier.padding(12.dp), color = Red)
                     }
                 }
-                HorizontalPager(pager, Modifier.weight(1f)) { page ->
-                    MonthPage(
-                        ym = earliest.plusMonths(page.toLong()),
-                        reminders = reminders,
-                        states = states,
-                        today = today,
-                        onToggle = { o, done -> vm.go { complete(o, done) } },
-                        onEdit = { editing = it; formOpen = true },
-                        onDelete = { o -> if (o.once) vm.go { deleteOne(o) } else ask = Ask(o, null) }
-                    )
+                Box(Modifier.weight(1f)) {
+                    HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
+                        MonthPage(
+                            ym = earliest.plusMonths(page.toLong()),
+                            cur = cur,
+                            reminders = reminders,
+                            states = states,
+                            today = today,
+                            onToday = { scope.launch { pager.animateScrollToPage(curPage) } },
+                            onToggle = { o, done -> vm.go { complete(o, done) } },
+                            onEdit = { editing = it; formOpen = true },
+                            onDelete = { o -> if (o.once) vm.go { deleteOne(o) } else ask = Ask(o, null) }
+                        )
+                    }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        IconButton(
+                            onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
+                            enabled = pager.currentPage > 0
+                        ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month") }
+                        IconButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
+                        }
+                    }
                 }
             }
         }
@@ -212,8 +204,12 @@ fun Root(vm: VM) {
                     TextButton(onClick = {
                         ask = null
                         val e = a.edit
-                        if (e == null) vm.go { splitFrom(a.o, a.o.title, a.o.note, null, true) }
-                        else vm.go { splitFrom(a.o, e.first, e.second, e.third.dayOfMonth, false) }
+                        if (e == null) {
+                            vm.go { splitFrom(a.o, a.o.title, a.o.note, null, true) }
+                        } else {
+                            val moved = if (e.third != a.o.dueDate) e.third else null
+                            vm.go { splitFrom(a.o, e.first, e.second, moved, false) }
+                        }
                     }) { Text("This and following") }
                 }
             },
@@ -225,9 +221,11 @@ fun Root(vm: VM) {
 @Composable
 fun MonthPage(
     ym: YearMonth,
+    cur: YearMonth,
     reminders: List<Reminder>,
     states: List<OccurrenceState>,
     today: LocalDate,
+    onToday: () -> Unit,
     onToggle: (Occ, Boolean) -> Unit,
     onEdit: (Occ) -> Unit,
     onDelete: (Occ) -> Unit
@@ -238,13 +236,28 @@ fun MonthPage(
     val done = occ.filter { it.completedAt != null }
     val primary = MaterialTheme.colorScheme.primary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp)) {
-        if (occ.isEmpty()) {
-            item { Text("No reminders this month", color = muted) }
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 56.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(ym.format(monthFmt), style = MaterialTheme.typography.titleLarge)
+            if (overdue.isNotEmpty()) {
+                Badge(Modifier.padding(start = 8.dp), containerColor = Red) { Text("${overdue.size}") }
+            }
         }
-        section("Overdue", overdue, Red, today, onToggle, onEdit, onDelete)
-        section("Upcoming", upcoming, primary, today, onToggle, onEdit, onDelete)
-        section("Done", done, muted, today, onToggle, onEdit, onDelete)
+        if (ym != cur) {
+            TextButton(onClick = onToday, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Go to current month") }
+        }
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 120.dp)) {
+            if (occ.isEmpty()) {
+                item { Text("No reminders this month", color = muted) }
+            }
+            section("Overdue", overdue, Red, today, onToggle, onEdit, onDelete)
+            section("Upcoming", upcoming, primary, today, onToggle, onEdit, onDelete)
+            section("Done", done, muted, today, onToggle, onEdit, onDelete)
+        }
     }
 }
 
@@ -297,17 +310,18 @@ fun OccRow(o: Occ, today: LocalDate, onToggle: (Occ, Boolean) -> Unit, onEdit: (
 fun FormDialog(
     editing: Occ?,
     onDismiss: () -> Unit,
-    onCreate: (String, String?, ReminderType, LocalDate, Int?) -> Unit,
+    onCreate: (String, String?, Freq, LocalDate, Int?) -> Unit,
     onEdit: (Occ, String, String?, LocalDate) -> Unit
 ) {
     var title by remember { mutableStateOf(editing?.title ?: "") }
     var note by remember { mutableStateOf(editing?.note ?: "") }
-    var type by remember { mutableStateOf(ReminderType.MONTHLY_FOREVER) }
+    var freq by remember { mutableStateOf(Freq.ONCE) }
+    var limited by remember { mutableStateOf(false) }
     var countText by remember { mutableStateOf("12") }
     var date by remember { mutableStateOf(editing?.dueDate ?: LocalDate.now()) }
     var picker by remember { mutableStateOf(false) }
-    val count = countText.toIntOrNull()
-    val valid = title.isNotBlank() && (editing != null || type != ReminderType.MONTHLY_COUNT || (count ?: 0) >= 1)
+    val count = if (limited && freq != Freq.ONCE) countText.toIntOrNull() else null
+    val valid = title.isNotBlank() && (editing != null || !limited || freq == Freq.ONCE || (count ?: 0) >= 1)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -318,26 +332,33 @@ fun FormDialog(
                 OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, modifier = Modifier.fillMaxWidth())
                 if (editing == null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(type == ReminderType.ONCE, { type = ReminderType.ONCE }, label = { Text("Once") })
-                        FilterChip(type == ReminderType.MONTHLY_FOREVER, { type = ReminderType.MONTHLY_FOREVER }, label = { Text("Monthly") })
-                        FilterChip(type == ReminderType.MONTHLY_COUNT, { type = ReminderType.MONTHLY_COUNT }, label = { Text("N times") })
+                        FilterChip(freq == Freq.ONCE, { freq = Freq.ONCE }, label = { Text("Once") })
+                        FilterChip(freq == Freq.WEEKLY, { freq = Freq.WEEKLY }, label = { Text("Weekly") })
+                        FilterChip(freq == Freq.MONTHLY, { freq = Freq.MONTHLY }, label = { Text("Monthly") })
+                        FilterChip(freq == Freq.YEARLY, { freq = Freq.YEARLY }, label = { Text("Yearly") })
                     }
-                    if (type == ReminderType.MONTHLY_COUNT) {
-                        OutlinedTextField(
-                            countText,
-                            { countText = it.filter(Char::isDigit) },
-                            label = { Text("Repetitions") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    if (freq != Freq.ONCE) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(!limited, { limited = false }, label = { Text("Forever") })
+                            FilterChip(limited, { limited = true }, label = { Text("N times") })
+                        }
+                        if (limited) {
+                            OutlinedTextField(
+                                countText,
+                                { countText = it.filter(Char::isDigit) },
+                                label = { Text("Repetitions") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
                 OutlinedButton(onClick = { picker = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (editing == null && type != ReminderType.ONCE) "First due: ${date.format(fullFmt)}" else "Due: ${date.format(fullFmt)}")
+                    Text(if (editing == null && freq != Freq.ONCE) "First due: ${date.format(fullFmt)}" else "Due: ${date.format(fullFmt)}")
                 }
                 if (editing == null) {
-                    val preview = previewDates(date, type, count)
+                    val preview = previewDates(date, freq, count)
                     if (preview.isNotEmpty()) {
                         Text("Dates", style = MaterialTheme.typography.titleSmall)
                         Column(Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
@@ -348,7 +369,7 @@ fun FormDialog(
                                 )
                             }
                         }
-                        if (type == ReminderType.MONTHLY_FOREVER) {
+                        if (!limited) {
                             Text("Continues indefinitely", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -360,7 +381,7 @@ fun FormDialog(
                 enabled = valid,
                 onClick = {
                     val n = note.trim().ifEmpty { null }
-                    if (editing == null) onCreate(title.trim(), n, type, date, count) else onEdit(editing, title.trim(), n, date)
+                    if (editing == null) onCreate(title.trim(), n, freq, date, count) else onEdit(editing, title.trim(), n, date)
                 }
             ) { Text("Save") }
         },

@@ -15,7 +15,7 @@ import androidx.room.RoomDatabase
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
-enum class ReminderType { ONCE, MONTHLY_FOREVER, MONTHLY_COUNT }
+enum class Freq { ONCE, WEEKLY, MONTHLY, YEARLY }
 
 @Entity
 data class Reminder(
@@ -23,9 +23,9 @@ data class Reminder(
     val groupId: String,
     val title: String,
     val note: String?,
-    val type: ReminderType,
-    val startMonth: String,
-    val dayOfMonth: Int,
+    val type: Freq,
+    val startDate: String,
+    val anchorDay: Int,
     val occurrenceCount: Int?
 )
 
@@ -78,7 +78,7 @@ interface ReminderDao {
     suspend fun clearFuture(g: String, p: String)
 }
 
-@Database(entities = [Reminder::class, OccurrenceState::class], version = 1, exportSchema = false)
+@Database(entities = [Reminder::class, OccurrenceState::class], version = 2, exportSchema = false)
 abstract class Db : RoomDatabase() {
     abstract fun dao(): ReminderDao
 
@@ -87,6 +87,7 @@ abstract class Db : RoomDatabase() {
 
         fun get(context: Context): Db = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, Db::class.java, "duely.db")
+                .fallbackToDestructiveMigration()
                 .build()
                 .also { instance = it }
         }
