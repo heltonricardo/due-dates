@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -77,6 +76,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
@@ -114,13 +115,12 @@ import java.text.Normalizer
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-private val Red = Color(0xFFFF6B6B)
+private val Red = Color(0xFFE5484D)
 private val shortFmt = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 private val fullFmt = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
 private val monthFmt = DateTimeFormatter.ofPattern("MMMM", Locale.US)
 private val monthYearFmt = DateTimeFormatter.ofPattern("MMM yyyy", Locale.US)
 private val timeFmt = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
-private val themeNames = listOf("Blue", "Green", "Orange", "Pink", "Purple", "Teal")
 
 data class Ask(val o: Occ, val edit: EditData?)
 
@@ -134,21 +134,20 @@ fun defaultCount(f: Freq): Int = when (f) {
 }
 
 @Composable
-fun DueDatesTheme(theme: Int, content: @Composable () -> Unit) {
+fun DueDatesTheme(dark: Boolean, content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val scheme = if (theme < 0 && Build.VERSION.SDK_INT >= 31) {
-        dynamicDarkColorScheme(context)
-    } else if (theme < 0) {
-        schemeFor(ReminderColors[0])
+    val scheme = if (Build.VERSION.SDK_INT >= 31) {
+        if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else if (dark) {
+        darkColorScheme()
     } else {
-        schemeFor(ReminderColors[theme.coerceIn(0, ReminderColors.size - 1)])
+        lightColorScheme()
     }
     MaterialTheme(colorScheme = scheme, content = content)
 }
 
 @Composable
 fun Root(vm: VM) {
-    val context = LocalContext.current
     val reminders by vm.reminders.collectAsState()
     val states by vm.states.collectAsState()
     val settings by vm.settings.collectAsState()
@@ -356,8 +355,7 @@ fun Root(vm: VM) {
         SettingsSheet(
             settings = settings,
             onTime = { h, m -> vm.setNotifyTime(h, m) },
-            onTheme = { vm.setTheme(it) },
-            onTest = { Notifier.runTest(context) },
+            onDark = { vm.setDark(it) },
             onExport = { uri ->
                 showSettings = false
                 vm.exportTo(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) "Backup saved" else "Export failed") } }
@@ -676,8 +674,7 @@ private fun Pill(text: String, color: Color) {
 fun SettingsSheet(
     settings: AppSettings,
     onTime: (Int, Int) -> Unit,
-    onTheme: (Int) -> Unit,
-    onTest: () -> Unit,
+    onDark: (Boolean) -> Unit,
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
     onDismiss: () -> Unit
@@ -691,7 +688,6 @@ fun SettingsSheet(
         if (uri != null) pendingImport = uri
     }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val effective = if (settings.theme < 0 && Build.VERSION.SDK_INT < 31) 0 else settings.theme
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier.fillMaxWidth()
@@ -718,33 +714,21 @@ fun SettingsSheet(
                     )
                 }
             }
-            Text("Theme color", style = MaterialTheme.typography.labelLarge)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                if (Build.VERSION.SDK_INT >= 31) {
-                    Box(
-                        Modifier.size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                            .then(if (effective < 0) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
-                            .clickable { onTheme(-1) },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Palette, contentDescription = "Wallpaper colors", modifier = Modifier.size(20.dp)) }
-                }
-                ReminderColors.forEachIndexed { i, c ->
-                    Box(
-                        Modifier.size(38.dp)
-                            .clip(CircleShape)
-                            .background(c)
-                            .then(if (effective == i) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
-                            .clickable { onTheme(i) }
-                    )
-                }
+            Text("Theme", style = MaterialTheme.typography.labelLarge)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = !settings.dark,
+                    onClick = { onDark(false) },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                    icon = {}
+                ) { Text("Light") }
+                SegmentedButton(
+                    selected = settings.dark,
+                    onClick = { onDark(true) },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                    icon = {}
+                ) { Text("Dark") }
             }
-            Text(
-                if (effective < 0) "Wallpaper colors" else themeNames[effective.coerceIn(0, themeNames.size - 1)],
-                style = MaterialTheme.typography.bodySmall,
-                color = muted
-            )
             Text("Backup", style = MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
@@ -757,7 +741,6 @@ fun SettingsSheet(
                 ) { Text("Import") }
             }
             Text("Import replaces all current data with the file's content.", style = MaterialTheme.typography.bodySmall, color = muted)
-            OutlinedButton(onClick = onTest, modifier = Modifier.fillMaxWidth()) { Text("Send test notification (in 10 s)") }
         }
     }
     pendingImport?.let { uri ->

@@ -66,9 +66,8 @@ Updates install over the previous version as long as they come from the same rel
 
 ### Settings
 - Notification time, with a time picker and a note about possible delays.
-- Theme color: wallpaper colors (Android 12 and later) or one of 6 colors. The app is always dark.
+- Theme: light or dark (dark by default). On Android 12 and later, the colors follow your wallpaper.
 - Backup: export all data to a JSON file, or import a file. Import replaces all current data and asks for confirmation.
-- Send a test notification (arrives in about 10 seconds).
 
 ### Data and privacy
 - All data is stored locally in a Room database. The app has no internet permission.
@@ -108,7 +107,7 @@ The app name is in `app/src/main/res/values/strings.xml` (`app_name`).
 - A recurring reminder that never ends is shown up to 12 months ahead.
 - Editing the date of a one-time reminder, or using "Only this", changes only that occurrence.
 - Undo restores the whole state from before the action, so changes made in between are also reverted.
-- The widget uses system colors, not the in-app theme color.
+- The widget follows the system theme, not the in-app light or dark choice.
 
 ## Privacy
 

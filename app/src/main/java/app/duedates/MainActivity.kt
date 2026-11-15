@@ -12,6 +12,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
@@ -110,7 +111,7 @@ class VM(app: Application) : AndroidViewModel(app) {
         Notifier.restart(getApplication<Application>())
     }
 
-    fun setTheme(index: Int) = update(_settings.value.copy(theme = index))
+    fun setDark(dark: Boolean) = update(_settings.value.copy(dark = dark))
 
     private fun update(s: AppSettings) {
         Prefs.save(getApplication<Application>(), s)
@@ -121,12 +122,18 @@ class VM(app: Application) : AndroidViewModel(app) {
 class MainActivity : ComponentActivity() {
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+    private fun applyBars(dark: Boolean) {
+        val style = if (dark) {
+            SystemBarStyle.dark(Color.TRANSPARENT)
+        } else {
+            SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        }
+        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
-        )
+        applyBars(Prefs.load(this).dark)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -136,7 +143,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val vm: VM = viewModel()
             val settings by vm.settings.collectAsState()
-            DueDatesTheme(settings.theme) {
+            LaunchedEffect(settings.dark) { applyBars(settings.dark) }
+            DueDatesTheme(settings.dark) {
                 Root(vm)
             }
         }

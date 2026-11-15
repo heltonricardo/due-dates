@@ -49,7 +49,7 @@ import java.util.Locale
 
 private val OccKey = ActionParameters.Key<String>("occ_key")
 private val widgetDate = DateTimeFormatter.ofPattern("MMM d", Locale.US)
-private val WidgetRed = Color(0xFFFF6B6B)
+private val WidgetRed = Color(0xFFE5484D)
 
 class DueWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {

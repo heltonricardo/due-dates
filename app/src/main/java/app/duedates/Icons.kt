@@ -32,12 +32,12 @@ val ReminderIcons: List<Pair<String, ImageVector>> = listOf(
 )
 
 val ReminderColors: List<Color> = listOf(
-    Color(0xFF7AA7FF),
-    Color(0xFF6FD6A0),
-    Color(0xFFFFB066),
-    Color(0xFFFF8FB1),
-    Color(0xFFB69CFF),
-    Color(0xFF5ED6D6)
+    Color(0xFF4C8DFF),
+    Color(0xFF2FB36D),
+    Color(0xFFF08C2E),
+    Color(0xFFE5558A),
+    Color(0xFF8B6BEF),
+    Color(0xFF19A8A8)
 )
 
 fun iconFor(key: String): ImageVector = ReminderIcons.firstOrNull { it.first == key }?.second ?: ReminderIcons[0].second

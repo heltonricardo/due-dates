@@ -45,14 +45,6 @@ object Notifier {
         WorkManager.getInstance(context).enqueueUniqueWork("notify_$slot", ExistingWorkPolicy.REPLACE, request)
     }
 
-    fun runTest(context: Context) {
-        val request = OneTimeWorkRequestBuilder<NotifyWorker>()
-            .setInitialDelay(10, TimeUnit.SECONDS)
-            .setInputData(workDataOf("slot" to -1))
-            .build()
-        WorkManager.getInstance(context).enqueue(request)
-    }
-
     fun restart(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork("notify_1")
         schedule(context, 0)
