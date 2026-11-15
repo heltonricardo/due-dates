@@ -25,7 +25,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 object Notifier {
-    private const val CHANNEL = "reminders"
+    private const val CHANNEL = "reminders_v2"
     private val fmt = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
     fun schedule(context: Context, slot: Int) {
@@ -54,7 +54,8 @@ object Notifier {
 
     fun show(context: Context, o: Occ, today: LocalDate) {
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH))
+        nm.deleteNotificationChannel("reminders")
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_DEFAULT))
         val nid = o.key.hashCode()
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val done = Intent(context, MarkDoneReceiver::class.java)
@@ -63,6 +64,8 @@ object Notifier {
             .putExtra("t", o.title)
             .putExtra("n", o.note)
             .putExtra("d", o.dueDate.toString())
+            .putExtra("i", o.icon)
+            .putExtra("c", o.color)
             .putExtra("nid", nid)
         val donePi = PendingIntent.getBroadcast(context, nid, done, flags)
         val openPi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), flags)
@@ -104,7 +107,9 @@ class MarkDoneReceiver : BroadcastReceiver() {
                     completedAt = null,
                     isException = false,
                     once = false,
-                    adjusted = false
+                    adjusted = false,
+                    icon = intent.getStringExtra("i") ?: "bill",
+                    color = intent.getIntExtra("c", 0)
                 )
                 Repo(Db.get(context).dao()).complete(o, true)
                 context.getSystemService(NotificationManager::class.java).cancel(intent.getIntExtra("nid", 0))

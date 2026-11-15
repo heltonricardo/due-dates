@@ -26,7 +26,9 @@ data class Reminder(
     val type: Freq,
     val startDate: String,
     val anchorDay: Int,
-    val occurrenceCount: Int?
+    val occurrenceCount: Int?,
+    val icon: String,
+    val color: Int
 )
 
 @Entity(indices = [Index(value = ["groupId", "period"], unique = true)])
@@ -39,7 +41,9 @@ data class OccurrenceState(
     val dueDate: String,
     val completedAt: String?,
     val deleted: Boolean,
-    val isException: Boolean
+    val isException: Boolean,
+    val icon: String,
+    val color: Int
 )
 
 @Dao
@@ -78,7 +82,7 @@ interface ReminderDao {
     suspend fun clearFuture(g: String, p: String)
 }
 
-@Database(entities = [Reminder::class, OccurrenceState::class], version = 2, exportSchema = false)
+@Database(entities = [Reminder::class, OccurrenceState::class], version = 3, exportSchema = false)
 abstract class Db : RoomDatabase() {
     abstract fun dao(): ReminderDao
 

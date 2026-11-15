@@ -15,7 +15,9 @@ data class Occ(
     val completedAt: LocalDateTime?,
     val isException: Boolean,
     val once: Boolean,
-    val adjusted: Boolean
+    val adjusted: Boolean,
+    val icon: String,
+    val color: Int
 ) {
     val key get() = "$groupId|$period"
     fun overdue(today: LocalDate) = completedAt == null && dueDate.isBefore(today)
@@ -96,7 +98,9 @@ fun occurrencesFor(ym: YearMonth, reminders: List<Reminder>, states: List<Occurr
                 completedAt = null,
                 isException = false,
                 once = r.type == Freq.ONCE,
-                adjusted = r.isAdjusted(k)
+                adjusted = r.isAdjusted(k),
+                icon = r.icon,
+                color = r.color
             )
         }
     }
@@ -110,7 +114,9 @@ fun occurrencesFor(ym: YearMonth, reminders: List<Reminder>, states: List<Occurr
             completedAt = it.completedAt?.let { c -> LocalDateTime.parse(c) },
             isException = it.isException,
             once = it.groupId in onceGroups,
-            adjusted = false
+            adjusted = false,
+            icon = it.icon,
+            color = it.color
         )
     }
     return (fromRules + fromStates).sortedWith(compareBy({ it.dueDate }, { it.title }))
@@ -142,14 +148,18 @@ fun previewDates(first: LocalDate, type: Freq, count: Int?): List<Pair<LocalDate
         type = type,
         startDate = first.toString(),
         anchorDay = first.dayOfMonth,
-        occurrenceCount = null
+        occurrenceCount = null,
+        icon = "bill",
+        color = 0
     )
     val n = if (count == null) 12 else count.coerceIn(0, 120)
     return (0 until n).map { r.dateAt(it) to r.isAdjusted(it) }
 }
 
+data class EditData(val title: String, val note: String?, val date: LocalDate, val icon: String, val color: Int)
+
 class Repo(private val dao: ReminderDao) {
-    suspend fun create(title: String, note: String?, type: Freq, first: LocalDate, count: Int?) {
+    suspend fun create(title: String, note: String?, type: Freq, first: LocalDate, count: Int?, icon: String, color: Int) {
         dao.insert(
             Reminder(
                 groupId = UUID.randomUUID().toString(),
@@ -158,7 +168,9 @@ class Repo(private val dao: ReminderDao) {
                 type = type,
                 startDate = first.toString(),
                 anchorDay = first.dayOfMonth,
-                occurrenceCount = if (type == Freq.ONCE) 1 else count
+                occurrenceCount = if (type == Freq.ONCE) 1 else count,
+                icon = icon,
+                color = color
             )
         )
     }
@@ -173,7 +185,9 @@ class Repo(private val dao: ReminderDao) {
                 dueDate = o.dueDate.toString(),
                 completedAt = null,
                 deleted = false,
-                isException = false
+                isException = false,
+                icon = o.icon,
+                color = o.color
             )
 
     suspend fun complete(o: Occ, done: Boolean) {
@@ -189,10 +203,19 @@ class Repo(private val dao: ReminderDao) {
 
     suspend fun deleteOne(o: Occ) = dao.upsert(stateOf(o).copy(deleted = true))
 
-    suspend fun editOne(o: Occ, title: String, note: String?, date: LocalDate) =
-        dao.upsert(stateOf(o).copy(title = title, note = note, dueDate = date.toString(), isException = true))
+    suspend fun editOne(o: Occ, e: EditData) =
+        dao.upsert(
+            stateOf(o).copy(
+                title = e.title,
+                note = e.note,
+                dueDate = e.date.toString(),
+                isException = true,
+                icon = e.icon,
+                color = e.color
+            )
+        )
 
-    suspend fun splitFrom(o: Occ, title: String, note: String?, newDate: LocalDate?, remove: Boolean) {
+    suspend fun splitFrom(o: Occ, e: EditData?, newDate: LocalDate?, remove: Boolean) {
         val rows = dao.group(o.groupId)
         val p = LocalDate.parse(o.period)
         val r = rows.filter { !LocalDate.parse(it.startDate).isAfter(p) }
@@ -208,11 +231,13 @@ class Repo(private val dao: ReminderDao) {
             dao.insert(
                 r.copy(
                     id = 0,
-                    title = title,
-                    note = note,
+                    title = e?.title ?: r.title,
+                    note = e?.note,
                     startDate = (newDate ?: p).toString(),
                     anchorDay = newDate?.dayOfMonth ?: r.anchorDay,
-                    occurrenceCount = rest
+                    occurrenceCount = rest,
+                    icon = e?.icon ?: r.icon,
+                    color = e?.color ?: r.color
                 )
             )
         }
