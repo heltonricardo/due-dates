@@ -3,6 +3,7 @@ package app.duedates
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -25,13 +26,22 @@ data class Occ(
     fun overdue(today: LocalDate) = completedAt == null && dueDate.isBefore(today)
 }
 
+data class RuleData(
+    val type: Freq,
+    val every: Int,
+    val weekdays: Int,
+    val count: Int?,
+    val businessDay: Int
+)
+
 data class EditData(
     val title: String,
     val note: String?,
     val date: LocalDate,
     val icon: String,
     val color: Int,
-    val notifyWeekends: Boolean
+    val notifyWeekends: Boolean,
+    val rule: RuleData? = null
 )
 
 data class NewReminder(
@@ -43,10 +53,29 @@ data class NewReminder(
     val icon: String,
     val color: Int,
     val businessDay: Int,
-    val notifyWeekends: Boolean
+    val notifyWeekends: Boolean,
+    val every: Int,
+    val weekdays: Int
 )
 
 fun isWeekend(d: LocalDate) = d.dayOfWeek == DayOfWeek.SATURDAY || d.dayOfWeek == DayOfWeek.SUNDAY
+
+fun weekdayBit(d: LocalDate): Int = 1 shl (d.dayOfWeek.value - 1)
+
+fun Reminder.mask(): Int = if (weekdays != 0) weekdays else weekdayBit(LocalDate.parse(startDate))
+
+private fun Reminder.weekDays(): List<Int> = (1..7).filter { (mask() and (1 shl (it - 1))) != 0 }
+
+private fun Reminder.weeklyDate(k: Int): LocalDate {
+    val s = LocalDate.parse(startDate)
+    val days = weekDays()
+    val monday = s.minusDays((s.dayOfWeek.value - 1).toLong())
+    val first = days.filter { it >= s.dayOfWeek.value }
+    if (k < first.size) return monday.plusDays((first[k] - 1).toLong())
+    val kk = k - first.size
+    val block = kk / days.size + 1
+    return monday.plusWeeks(block.toLong() * every).plusDays((days[kk % days.size] - 1).toLong())
+}
 
 private fun nthBusinessDay(ym: YearMonth, n: Int): Pair<LocalDate, Boolean> {
     if (n < 0) {
@@ -74,14 +103,16 @@ private fun Reminder.clampDay(ym: YearMonth): Pair<LocalDate, Boolean> {
 
 private fun Reminder.resolve(k: Int): Pair<LocalDate, Boolean> {
     val s = LocalDate.parse(startDate)
+    val step = k.toLong() * every
     return when (type) {
         Freq.ONCE -> s to false
-        Freq.WEEKLY -> s.plusWeeks(k.toLong()) to false
+        Freq.DAILY -> s.plusDays(step) to false
+        Freq.WEEKLY -> weeklyDate(k) to false
         Freq.MONTHLY -> {
-            val ym = YearMonth.from(s).plusMonths(k.toLong())
+            val ym = YearMonth.from(s).plusMonths(step)
             if (businessDay != 0) nthBusinessDay(ym, businessDay) else clampDay(ym)
         }
-        Freq.YEARLY -> clampDay(YearMonth.from(s).plusYears(k.toLong()))
+        Freq.YEARLY -> clampDay(YearMonth.from(s).plusYears(step))
     }
 }
 
@@ -93,9 +124,17 @@ fun Reminder.indexOf(date: LocalDate): Int {
     val s = LocalDate.parse(startDate)
     return when (type) {
         Freq.ONCE -> 0
-        Freq.WEEKLY -> (ChronoUnit.DAYS.between(s, date) / 7).toInt()
-        Freq.MONTHLY -> ChronoUnit.MONTHS.between(YearMonth.from(s), YearMonth.from(date)).toInt()
-        Freq.YEARLY -> date.year - s.year
+        Freq.DAILY -> (ChronoUnit.DAYS.between(s, date) / every).toInt()
+        Freq.WEEKLY -> {
+            val days = weekDays()
+            val sd = s.dayOfWeek.value
+            val dow = date.dayOfWeek.value
+            val a = days.count { it >= sd }
+            val wk = ChronoUnit.WEEKS.between(s.with(DayOfWeek.MONDAY), date.with(DayOfWeek.MONDAY)).toInt() / every
+            if (wk <= 0) days.count { it >= sd && it < dow } else a + (wk - 1) * days.size + days.count { it < dow }
+        }
+        Freq.MONTHLY -> ChronoUnit.MONTHS.between(YearMonth.from(s), YearMonth.from(date)).toInt() / every
+        Freq.YEARLY -> (date.year - s.year) / every
     }
 }
 
@@ -106,8 +145,19 @@ fun Reminder.occurrencesIn(from: LocalDate, to: LocalDate): List<Int> {
     val ks = mutableListOf<Int>()
     when (type) {
         Freq.ONCE -> if (ok(0)) ks += 0
+        Freq.DAILY -> {
+            var k = maxOf(0, (ChronoUnit.DAYS.between(s, from) / every).toInt() - 1)
+            while (ok(k) && !dateAt(k).isAfter(to)) {
+                ks += k
+                k++
+            }
+        }
         Freq.WEEKLY -> {
-            var k = maxOf(0, (ChronoUnit.DAYS.between(s, from) / 7).toInt() - 1)
+            val days = weekDays()
+            val a = days.count { it >= s.dayOfWeek.value }
+            val weeks = ChronoUnit.WEEKS.between(s.with(DayOfWeek.MONDAY), from.with(DayOfWeek.MONDAY))
+            val block = maxOf(0L, weeks / every - 1).toInt()
+            var k = if (block == 0) 0 else a + (block - 1) * days.size
             while (ok(k) && !dateAt(k).isAfter(to)) {
                 ks += k
                 k++
@@ -117,13 +167,14 @@ fun Reminder.occurrencesIn(from: LocalDate, to: LocalDate): List<Int> {
             var ym = YearMonth.from(from)
             val end = YearMonth.from(to)
             while (ym <= end) {
-                val k = if (type == Freq.MONTHLY) {
+                val diff = if (type == Freq.MONTHLY) {
                     ChronoUnit.MONTHS.between(YearMonth.from(s), ym).toInt()
                 } else if (ym.monthValue == s.monthValue) {
                     ym.year - s.year
                 } else {
                     -1
                 }
+                val k = if (diff >= 0 && diff % every == 0) diff / every else -1
                 if (ok(k)) ks += k
                 ym = ym.plusMonths(1)
             }
@@ -199,8 +250,16 @@ fun pendingDue(reminders: List<Reminder>, states: List<OccurrenceState>, today: 
     return out
 }
 
-fun previewDates(first: LocalDate, type: Freq, count: Int?, businessDay: Int): List<Pair<LocalDate, Boolean>> {
+fun previewDates(
+    first: LocalDate,
+    type: Freq,
+    count: Int?,
+    businessDay: Int,
+    every: Int,
+    weekdays: Int
+): List<Pair<LocalDate, Boolean>> {
     if (type == Freq.ONCE) return emptyList()
+    if (type == Freq.WEEKLY && weekdays == 0) return emptyList()
     val r = Reminder(
         groupId = "",
         title = "",
@@ -212,10 +271,35 @@ fun previewDates(first: LocalDate, type: Freq, count: Int?, businessDay: Int): L
         icon = "bill",
         color = 0,
         businessDay = if (type == Freq.MONTHLY) businessDay else 0,
-        notifyWeekends = true
+        notifyWeekends = true,
+        every = every.coerceAtLeast(1),
+        weekdays = if (type == Freq.WEEKLY) weekdays else 0
     )
     val n = if (count == null) 12 else count.coerceIn(0, 120)
     return (0 until n).map { r.dateAt(it) to r.isAdjusted(it) }
+}
+
+private fun remainingCount(r: Reminder, others: List<Reminder>, k: Int): Int? {
+    val c = r.occurrenceCount ?: return null
+    if (others.any { it.occurrenceCount == null }) return null
+    return (c - k + others.sumOf { it.occurrenceCount ?: 0 }).coerceAtLeast(1)
+}
+
+fun ruleDataFor(o: Occ, reminders: List<Reminder>): RuleData? {
+    val p = LocalDate.parse(o.period)
+    val rows = reminders.filter { it.groupId == o.groupId }
+    val r = rows.filter { !LocalDate.parse(it.startDate).isAfter(p) }
+        .maxByOrNull { LocalDate.parse(it.startDate) } ?: return null
+    if (r.type == Freq.ONCE) return null
+    val rs = LocalDate.parse(r.startDate)
+    val others = rows.filter { it.id != r.id && LocalDate.parse(it.startDate).isAfter(rs) }
+    return RuleData(
+        type = r.type,
+        every = r.every,
+        weekdays = if (r.type == Freq.WEEKLY) r.mask() else 0,
+        count = remainingCount(r, others, r.indexOf(p)),
+        businessDay = r.businessDay
+    )
 }
 
 class Repo(private val dao: ReminderDao) {
@@ -231,9 +315,11 @@ class Repo(private val dao: ReminderDao) {
             icon = n.icon,
             color = n.color,
             businessDay = if (n.type == Freq.MONTHLY) n.businessDay else 0,
-            notifyWeekends = n.notifyWeekends
+            notifyWeekends = n.notifyWeekends,
+            every = if (n.type == Freq.ONCE) 1 else n.every.coerceAtLeast(1),
+            weekdays = if (n.type == Freq.WEEKLY) n.weekdays else 0
         )
-        if (r.businessDay != 0) r = r.copy(startDate = r.dateAt(0).toString())
+        if (r.businessDay != 0 || r.type == Freq.WEEKLY) r = r.copy(startDate = r.dateAt(0).toString())
         dao.insert(r)
     }
 
@@ -264,6 +350,12 @@ class Repo(private val dao: ReminderDao) {
         }
     }
 
+    suspend fun setCompletion(o: Occ, date: LocalDate) {
+        val s = stateOf(o)
+        val time = o.completedAt?.toLocalTime() ?: LocalTime.NOON
+        dao.upsert(s.copy(completedAt = LocalDateTime.of(date, time).toString()))
+    }
+
     suspend fun deleteOne(o: Occ) = dao.upsert(stateOf(o).copy(deleted = true))
 
     suspend fun editOne(o: Occ, e: EditData) =
@@ -284,28 +376,39 @@ class Repo(private val dao: ReminderDao) {
         val p = LocalDate.parse(o.period)
         val r = rows.filter { !LocalDate.parse(it.startDate).isAfter(p) }
             .maxByOrNull { LocalDate.parse(it.startDate) } ?: return
-        val ends = rows.map { x -> x.occurrenceCount?.let { x.dateAt(it - 1) } }
-        val end: LocalDate? = if (ends.any { it == null }) null else ends.filterNotNull().maxOrNull()
-        val k = r.indexOf(p)
         val rStart = LocalDate.parse(r.startDate)
-        rows.filter { it.id != r.id && LocalDate.parse(it.startDate).isAfter(rStart) }.forEach { dao.delete(it) }
+        val others = rows.filter { it.id != r.id && LocalDate.parse(it.startDate).isAfter(rStart) }
+        val k = r.indexOf(p)
+        val remaining = remainingCount(r, others, k)
+        others.forEach { dao.delete(it) }
         if (k > 0) dao.update(r.copy(occurrenceCount = k)) else dao.delete(r)
         if (!remove) {
-            val rest = end?.let { (r.indexOf(it) - k + 1).coerceAtLeast(1) }
-            val nd = if (r.businessDay != 0) null else newDate
-            dao.insert(
-                r.copy(
-                    id = 0,
-                    title = e?.title ?: r.title,
-                    note = e?.note,
-                    startDate = (nd ?: p).toString(),
-                    anchorDay = nd?.dayOfMonth ?: r.anchorDay,
-                    occurrenceCount = rest,
-                    icon = e?.icon ?: r.icon,
-                    color = e?.color ?: r.color,
-                    notifyWeekends = e?.notifyWeekends ?: r.notifyWeekends
-                )
+            val rule = e?.rule
+            val type = rule?.type ?: r.type
+            val business = if (type == Freq.MONTHLY) (rule?.businessDay ?: r.businessDay) else 0
+            val start = if (business != 0) p else (newDate ?: p)
+            val anchor = when {
+                newDate != null && business == 0 -> newDate.dayOfMonth
+                type == r.type && business == r.businessDay -> r.anchorDay
+                else -> p.dayOfMonth
+            }
+            var n = r.copy(
+                id = 0,
+                title = e?.title ?: r.title,
+                note = e?.note,
+                type = type,
+                startDate = start.toString(),
+                anchorDay = anchor,
+                occurrenceCount = if (rule != null) rule.count else remaining,
+                icon = e?.icon ?: r.icon,
+                color = e?.color ?: r.color,
+                businessDay = business,
+                notifyWeekends = e?.notifyWeekends ?: r.notifyWeekends,
+                every = (rule?.every ?: r.every).coerceAtLeast(1),
+                weekdays = if (type == Freq.WEEKLY) (rule?.weekdays ?: r.weekdays) else 0
             )
+            if (n.businessDay != 0 || n.type == Freq.WEEKLY) n = n.copy(startDate = n.dateAt(0).toString())
+            dao.insert(n)
         }
         dao.clearFuture(o.groupId, o.period)
     }

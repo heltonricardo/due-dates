@@ -18,7 +18,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-enum class Freq { ONCE, WEEKLY, MONTHLY, YEARLY }
+enum class Freq { ONCE, DAILY, WEEKLY, MONTHLY, YEARLY }
 
 @Entity
 data class Reminder(
@@ -33,7 +33,9 @@ data class Reminder(
     val icon: String,
     val color: Int,
     @ColumnInfo(defaultValue = "0") val businessDay: Int,
-    @ColumnInfo(defaultValue = "1") val notifyWeekends: Boolean
+    @ColumnInfo(defaultValue = "1") val notifyWeekends: Boolean,
+    @ColumnInfo(defaultValue = "1") val every: Int,
+    @ColumnInfo(defaultValue = "0") val weekdays: Int
 )
 
 @Entity(indices = [Index(value = ["groupId", "period"], unique = true)])
@@ -108,7 +110,14 @@ private val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
-@Database(entities = [Reminder::class, OccurrenceState::class], version = 4, exportSchema = false)
+private val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE Reminder ADD COLUMN every INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE Reminder ADD COLUMN weekdays INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+@Database(entities = [Reminder::class, OccurrenceState::class], version = 5, exportSchema = false)
 abstract class Db : RoomDatabase() {
     abstract fun dao(): ReminderDao
 
@@ -117,7 +126,7 @@ abstract class Db : RoomDatabase() {
 
         fun get(context: Context): Db = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, Db::class.java, "duedates.db")
-                .addMigrations(MIGRATION_3_4)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
                 .also { instance = it }

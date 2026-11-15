@@ -56,6 +56,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +66,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -127,10 +129,22 @@ data class Ask(val o: Occ, val edit: EditData?)
 data class MonthStat(val ym: YearMonth, val overdue: Int, val upcoming: Int, val done: Int)
 
 fun defaultCount(f: Freq): Int = when (f) {
+    Freq.DAILY -> 7
     Freq.WEEKLY -> 4
     Freq.MONTHLY -> 12
     Freq.YEARLY -> 5
     Freq.ONCE -> 1
+}
+
+private fun unitLabel(f: Freq, n: Int): String {
+    val base = when (f) {
+        Freq.DAILY -> "day"
+        Freq.WEEKLY -> "week"
+        Freq.MONTHLY -> "month"
+        Freq.YEARLY -> "year"
+        Freq.ONCE -> ""
+    }
+    return if (n == 1) base else base + "s"
 }
 
 @Composable
@@ -174,6 +188,7 @@ fun Root(vm: VM) {
     var formOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Occ?>(null) }
     var ask by remember { mutableStateOf<Ask?>(null) }
+    var redating by remember { mutableStateOf<Occ?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var showOverview by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
@@ -275,6 +290,7 @@ fun Root(vm: VM) {
                             onToggle = { o, done -> vm.goUndoable(if (done) "Marked as done" else "Marked as pending") { complete(o, done) } },
                             onEdit = { editing = it; formOpen = true },
                             onDelete = { o -> if (o.once) vm.goUndoable("Reminder deleted") { deleteOne(o) } else ask = Ask(o, null) },
+                            onChangeDone = { redating = it },
                             onGo = { o ->
                                 goTo = YearMonth.from(o.dueDate)
                                 searching = false
@@ -316,7 +332,8 @@ fun Root(vm: VM) {
                             onToday = { scope.launch { pager.animateScrollToPage(curPage) } },
                             onToggle = { o, done -> vm.goUndoable(if (done) "Marked as done" else "Marked as pending") { complete(o, done) } },
                             onEdit = { editing = it; formOpen = true },
-                            onDelete = { o -> if (o.once) vm.goUndoable("Reminder deleted") { deleteOne(o) } else ask = Ask(o, null) }
+                            onDelete = { o -> if (o.once) vm.goUndoable("Reminder deleted") { deleteOne(o) } else ask = Ask(o, null) },
+                            onChangeDone = { redating = it }
                         )
                     }
                     Row(Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 16.dp)) {
@@ -369,8 +386,10 @@ fun Root(vm: VM) {
     }
 
     if (formOpen) {
+        val rule = editing?.let { e -> if (e.once) null else ruleDataFor(e, reminders) }
         FormSheet(
             editing = editing,
+            rule = rule,
             onDismiss = { formOpen = false },
             onCreate = { n ->
                 formOpen = false
@@ -383,12 +402,34 @@ fun Root(vm: VM) {
         )
     }
 
+    redating?.let { o ->
+        CompletionDialog(
+            o = o,
+            onDismiss = { redating = null },
+            onConfirm = { d ->
+                redating = null
+                vm.goUndoable("Completion date changed") { setCompletion(o, d) }
+            }
+        )
+    }
+
     ask?.let { a ->
         val verb = if (a.edit == null) "Delete" else "Edit"
         AlertDialog(
             onDismissRequest = { ask = null },
             title = { Text("$verb which reminders?") },
-            text = { Text(a.o.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(a.o.title)
+                    if (a.edit?.rule != null) {
+                        Text(
+                            "Repeat settings only apply to \"This and following\".",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 Row {
                     TextButton(onClick = {
@@ -414,6 +455,23 @@ fun Root(vm: VM) {
 }
 
 @Composable
+fun CompletionDialog(o: Occ, onDismiss: () -> Unit, onConfirm: (LocalDate) -> Unit) {
+    val initial = o.completedAt?.toLocalDate() ?: LocalDate.now()
+    val st = rememberDatePickerState(initialSelectedDateMillis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                st.selectedDateMillis?.let { onConfirm(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }
+            }) { Text("OK") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    ) {
+        DatePicker(st, title = { Text("Completion date", Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp)) })
+    }
+}
+
+@Composable
 fun MonthPage(
     ym: YearMonth,
     cur: YearMonth,
@@ -427,7 +485,8 @@ fun MonthPage(
     onToday: () -> Unit,
     onToggle: (Occ, Boolean) -> Unit,
     onEdit: (Occ) -> Unit,
-    onDelete: (Occ) -> Unit
+    onDelete: (Occ) -> Unit,
+    onChangeDone: (Occ) -> Unit
 ) {
     val occ = remember(ym, reminders, states) { occurrencesFor(ym, reminders, states) }
     val overdue = occ.filter { it.overdue(today) }
@@ -467,9 +526,9 @@ fun MonthPage(
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 120.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            section("Overdue", overdue, Red, today, onToggle, onEdit, onDelete)
-            section("Upcoming", upcoming, primary, today, onToggle, onEdit, onDelete)
-            section("Done", done, muted, today, onToggle, onEdit, onDelete)
+            section("Overdue", overdue, Red, today, onToggle, onEdit, onDelete, onChangeDone)
+            section("Upcoming", upcoming, primary, today, onToggle, onEdit, onDelete, onChangeDone)
+            section("Done", done, muted, today, onToggle, onEdit, onDelete, onChangeDone)
             if (footer.isNotEmpty()) {
                 item(key = "footer") {
                     Text(
@@ -492,7 +551,8 @@ private fun LazyListScope.section(
     today: LocalDate,
     onToggle: (Occ, Boolean) -> Unit,
     onEdit: (Occ) -> Unit,
-    onDelete: (Occ) -> Unit
+    onDelete: (Occ) -> Unit,
+    onChangeDone: (Occ) -> Unit
 ) {
     if (list.isEmpty()) return
     item(key = "h$title") {
@@ -504,7 +564,7 @@ private fun LazyListScope.section(
             fontWeight = FontWeight.SemiBold
         )
     }
-    items(list, key = { it.key }) { OccCard(it, today, onToggle, onEdit, onDelete) }
+    items(list, key = { it.key }) { OccCard(it, today, onToggle, onEdit, onDelete, onChangeDone) }
 }
 
 @Composable
@@ -514,6 +574,7 @@ fun OccCard(
     onToggle: (Occ, Boolean) -> Unit,
     onEdit: (Occ) -> Unit,
     onDelete: (Occ) -> Unit,
+    onChangeDone: (Occ) -> Unit,
     onGo: ((Occ) -> Unit)? = null
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -571,6 +632,7 @@ fun OccCard(
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             if (!done) DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit(o) })
+            if (done) DropdownMenuItem(text = { Text("Change completion date") }, onClick = { menu = false; onChangeDone(o) })
             if (onGo != null) DropdownMenuItem(text = { Text("Show in month") }, onClick = { menu = false; onGo(o) })
             DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete(o) })
         }
@@ -807,45 +869,66 @@ private fun DateChip(text: String, adjusted: Boolean, subtle: Boolean) {
 @Composable
 fun FormSheet(
     editing: Occ?,
+    rule: RuleData?,
     onDismiss: () -> Unit,
     onCreate: (NewReminder) -> Unit,
     onEdit: (Occ, EditData) -> Unit
 ) {
+    val recurring = editing == null || rule != null
     var title by remember { mutableStateOf(editing?.title ?: "") }
     var note by remember { mutableStateOf(editing?.note ?: "") }
-    var freq by remember { mutableStateOf(Freq.ONCE) }
-    var limited by remember { mutableStateOf(false) }
-    var countText by remember { mutableStateOf("") }
-    var businessMode by remember { mutableStateOf(false) }
-    var businessText by remember { mutableStateOf("5") }
-    var lastBusiness by remember { mutableStateOf(false) }
+    var freq by remember { mutableStateOf(rule?.type ?: Freq.ONCE) }
+    var everyText by remember { mutableStateOf((rule?.every ?: 1).toString()) }
+    var weekdays by remember { mutableStateOf(rule?.weekdays ?: 0) }
+    var limited by remember { mutableStateOf(rule?.count != null) }
+    var countText by remember { mutableStateOf(rule?.count?.toString() ?: "") }
+    var businessMode by remember { mutableStateOf((rule?.businessDay ?: 0) != 0) }
+    var businessText by remember { mutableStateOf(rule?.businessDay?.takeIf { it > 0 }?.toString() ?: "5") }
+    var lastBusiness by remember { mutableStateOf(rule?.businessDay == -1) }
     var weekends by remember { mutableStateOf(editing?.notifyWeekends ?: true) }
     var date by remember { mutableStateOf(editing?.dueDate ?: LocalDate.now()) }
     var icon by remember { mutableStateOf(editing?.icon ?: "bill") }
     var color by remember { mutableStateOf(editing?.color ?: 0) }
     var picker by remember { mutableStateOf(false) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val count = if (limited && freq != Freq.ONCE) countText.toIntOrNull() else null
+    val rec = recurring && freq != Freq.ONCE
+    val every = (everyText.toIntOrNull() ?: 0).coerceIn(0, 999)
+    val count = if (limited && rec) countText.toIntOrNull() else null
     val business = if (freq == Freq.MONTHLY && businessMode) {
         if (lastBusiness) -1 else (businessText.toIntOrNull() ?: 0).coerceIn(0, 23)
     } else {
         0
     }
     val valid = title.isNotBlank() &&
-        (editing != null || !limited || freq == Freq.ONCE || (count ?: 0) >= 1) &&
-        (editing != null || !(freq == Freq.MONTHLY && businessMode) || business != 0)
+        (!rec || (
+            every >= 1 &&
+                (!limited || (count ?: 0) >= 1) &&
+                (freq != Freq.WEEKLY || weekdays != 0) &&
+                (freq != Freq.MONTHLY || !businessMode || business != 0)
+            ))
     val accent = colorFor(color)
-    val frequencies = listOf(Freq.ONCE to "Once", Freq.WEEKLY to "Weekly", Freq.MONTHLY to "Monthly", Freq.YEARLY to "Yearly")
+    val frequencies = (if (editing == null) listOf(Freq.ONCE to "Once") else emptyList()) + listOf(
+        Freq.DAILY to "Daily",
+        Freq.WEEKLY to "Weekly",
+        Freq.MONTHLY to "Monthly",
+        Freq.YEARLY to "Yearly"
+    )
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden }
+    )
+    val sheetScope = rememberCoroutineScope()
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        onDismissRequest = { sheetScope.launch { sheetState.show() } },
+        sheetState = sheetState,
+        dragHandle = null
     ) {
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp)
+                .padding(top = 24.dp, bottom = 24.dp)
                 .navigationBarsPadding()
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -856,22 +939,66 @@ fun FormSheet(
             )
             OutlinedTextField(title, { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, modifier = Modifier.fillMaxWidth())
-            if (editing == null) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    frequencies.forEachIndexed { i, (f, label) ->
-                        SegmentedButton(
+            if (recurring) {
+                if (editing != null) {
+                    Text(
+                        "Repeat settings only apply to \"This and following\".",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = muted
+                    )
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    frequencies.forEach { (f, label) ->
+                        FilterChip(
                             selected = freq == f,
                             onClick = {
-                                freq = f
-                                countText = defaultCount(f).toString()
-                                if (f != Freq.MONTHLY) businessMode = false
+                                if (f != freq) {
+                                    freq = f
+                                    countText = defaultCount(f).toString()
+                                    if (f != Freq.MONTHLY) businessMode = false
+                                    if (f == Freq.WEEKLY && weekdays == 0) weekdays = weekdayBit(date)
+                                }
                             },
-                            shape = SegmentedButtonDefaults.itemShape(i, frequencies.size),
-                            icon = {}
-                        ) { Text(label, maxLines = 1) }
+                            label = { Text(label) }
+                        )
                     }
                 }
                 if (freq != Freq.ONCE) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Every", style = MaterialTheme.typography.bodyLarge)
+                        OutlinedTextField(
+                            everyText,
+                            { everyText = it.filter(Char::isDigit).take(3) },
+                            singleLine = true,
+                            isError = every < 1,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(96.dp)
+                        )
+                        Text(unitLabel(freq, every), style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (freq == Freq.WEEKLY) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            listOf("M", "T", "W", "T", "F", "S", "S").forEachIndexed { i, label ->
+                                val on = (weekdays and (1 shl i)) != 0
+                                Box(
+                                    Modifier.size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
+                                        .clickable { weekdays = weekdays xor (1 shl i) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                        if (weekdays == 0) {
+                            Text("Pick at least one day.", style = MaterialTheme.typography.bodySmall, color = Red)
+                        }
+                    }
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         SegmentedButton(
                             selected = !limited,
@@ -881,7 +1008,10 @@ fun FormSheet(
                         ) { Text("Forever", maxLines = 1) }
                         SegmentedButton(
                             selected = limited,
-                            onClick = { limited = true },
+                            onClick = {
+                                limited = true
+                                if (countText.isBlank()) countText = defaultCount(freq).toString()
+                            },
                             shape = SegmentedButtonDefaults.itemShape(1, 2),
                             icon = {}
                         ) { Text("N times", maxLines = 1) }
@@ -889,8 +1019,8 @@ fun FormSheet(
                     if (limited) {
                         OutlinedTextField(
                             countText,
-                            { countText = it.filter(Char::isDigit) },
-                            label = { Text("Repetitions") },
+                            { countText = it.filter(Char::isDigit).take(4) },
+                            label = { Text(if (editing == null) "Repetitions" else "Repetitions from this one") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
@@ -921,10 +1051,14 @@ fun FormSheet(
                     if (businessMode && !lastBusiness) {
                         OutlinedTextField(
                             businessText,
-                            { businessText = it.filter(Char::isDigit).take(2) },
+                            { v ->
+                                val digits = v.filter(Char::isDigit).take(2)
+                                businessText = if ((digits.toIntOrNull() ?: 0) > 23) "23" else digits
+                            },
                             label = { Text("Business day number (1–23)") },
                             supportingText = { Text("Counts Monday to Friday. Holidays are not considered.") },
                             singleLine = true,
+                            isError = business == 0,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -975,8 +1109,8 @@ fun FormSheet(
                     )
                 }
             }
-            if (editing == null) {
-                val preview = previewDates(date, freq, count, business)
+            if (rec) {
+                val preview = previewDates(date, freq, count, business, every, weekdays)
                 if (preview.isNotEmpty()) DatePreview(preview, date, !limited)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -986,10 +1120,12 @@ fun FormSheet(
                     enabled = valid,
                     onClick = {
                         val n = note.trim().ifEmpty { null }
+                        val mask = if (freq == Freq.WEEKLY) weekdays else 0
                         if (editing == null) {
-                            onCreate(NewReminder(title.trim(), n, freq, date, count, icon, color, business, weekends))
+                            onCreate(NewReminder(title.trim(), n, freq, date, count, icon, color, business, weekends, every, mask))
                         } else {
-                            onEdit(editing, EditData(title.trim(), n, date, icon, color, weekends))
+                            val r = if (rec) RuleData(freq, every, mask, count, business) else null
+                            onEdit(editing, EditData(title.trim(), n, date, icon, color, weekends, r))
                         }
                     }
                 ) { Text("Save") }
@@ -1003,7 +1139,11 @@ fun FormSheet(
             onDismissRequest = { picker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    st.selectedDateMillis?.let { date = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+                    st.selectedDateMillis?.let { ms ->
+                        val nd = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate()
+                        if (freq == Freq.WEEKLY && weekdays == weekdayBit(date)) weekdays = weekdayBit(nd)
+                        date = nd
+                    }
                     picker = false
                 }) { Text("OK") }
             },
@@ -1026,6 +1166,7 @@ fun SearchResults(
     onToggle: (Occ, Boolean) -> Unit,
     onEdit: (Occ) -> Unit,
     onDelete: (Occ) -> Unit,
+    onChangeDone: (Occ) -> Unit,
     onGo: (Occ) -> Unit
 ) {
     val q = normalize(query.trim())
@@ -1063,7 +1204,7 @@ fun SearchResults(
                     color = muted
                 )
             }
-            items(results, key = { it.key }) { OccCard(it, today, onToggle, onEdit, onDelete, onGo) }
+            items(results, key = { it.key }) { OccCard(it, today, onToggle, onEdit, onDelete, onChangeDone, onGo) }
         }
     }
 }

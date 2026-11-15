@@ -23,6 +23,8 @@ object Backup {
                     .put("color", it.color)
                     .put("businessDay", it.businessDay)
                     .put("notifyWeekends", it.notifyWeekends)
+                    .put("every", it.every)
+                    .put("weekdays", it.weekdays)
             )
         }
         val ss = JSONArray()
@@ -69,7 +71,9 @@ object Backup {
                 icon = o.getString("icon"),
                 color = o.getInt("color"),
                 businessDay = o.getInt("businessDay"),
-                notifyWeekends = o.getBoolean("notifyWeekends")
+                notifyWeekends = o.getBoolean("notifyWeekends"),
+                every = o.optInt("every", 1).coerceAtLeast(1),
+                weekdays = o.optInt("weekdays", 0)
             )
         }
         val states = (0 until ss.length()).map {

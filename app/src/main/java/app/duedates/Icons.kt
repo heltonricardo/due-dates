@@ -1,11 +1,17 @@
 package app.duedates
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.School
@@ -28,7 +34,13 @@ val ReminderIcons: List<Pair<String, ImageVector>> = listOf(
     "car" to Icons.Filled.DirectionsCar,
     "health" to Icons.Filled.MedicalServices,
     "school" to Icons.Filled.School,
-    "tv" to Icons.Filled.Tv
+    "tv" to Icons.Filled.Tv,
+    "building" to Icons.Filled.Business,
+    "pet" to Icons.Filled.Pets,
+    "money" to Icons.Filled.Payments,
+    "bank" to Icons.Filled.AccountBalance,
+    "gym" to Icons.Filled.FitnessCenter,
+    "travel" to Icons.Filled.Flight
 )
 
 val ReminderColors: List<Color> = listOf(
