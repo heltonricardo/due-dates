@@ -5,7 +5,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Duely"
+        android:label="@string/app_name"
         android:theme="@style/Theme.Duely">
 
         <activity

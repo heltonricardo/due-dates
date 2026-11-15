@@ -85,6 +85,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -190,7 +191,7 @@ fun Root(vm: VM) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Duely",
+                        stringResource(R.string.app_name),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
@@ -703,6 +704,7 @@ fun FormSheet(
     var countText by remember { mutableStateOf("") }
     var businessMode by remember { mutableStateOf(false) }
     var businessText by remember { mutableStateOf("5") }
+    var lastBusiness by remember { mutableStateOf(false) }
     var weekends by remember { mutableStateOf(editing?.notifyWeekends ?: true) }
     var date by remember { mutableStateOf(editing?.dueDate ?: LocalDate.now()) }
     var icon by remember { mutableStateOf(editing?.icon ?: "bill") }
@@ -710,10 +712,14 @@ fun FormSheet(
     var picker by remember { mutableStateOf(false) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val count = if (limited && freq != Freq.ONCE) countText.toIntOrNull() else null
-    val business = if (freq == Freq.MONTHLY && businessMode) (businessText.toIntOrNull() ?: 0).coerceIn(0, 23) else 0
+    val business = if (freq == Freq.MONTHLY && businessMode) {
+        if (lastBusiness) -1 else (businessText.toIntOrNull() ?: 0).coerceIn(0, 23)
+    } else {
+        0
+    }
     val valid = title.isNotBlank() &&
         (editing != null || !limited || freq == Freq.ONCE || (count ?: 0) >= 1) &&
-        (editing != null || !(freq == Freq.MONTHLY && businessMode) || business >= 1)
+        (editing != null || !(freq == Freq.MONTHLY && businessMode) || business != 0)
     val accent = colorFor(color)
     val frequencies = listOf(Freq.ONCE to "Once", Freq.WEEKLY to "Weekly", Freq.MONTHLY to "Monthly", Freq.YEARLY to "Yearly")
 
@@ -793,6 +799,12 @@ fun FormSheet(
                         ) { Text("Business day", maxLines = 1) }
                     }
                     if (businessMode) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Last business day", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                            Switch(checked = lastBusiness, onCheckedChange = { lastBusiness = it })
+                        }
+                    }
+                    if (businessMode && !lastBusiness) {
                         OutlinedTextField(
                             businessText,
                             { businessText = it.filter(Char::isDigit).take(2) },

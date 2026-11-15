@@ -49,6 +49,11 @@ data class NewReminder(
 fun isWeekend(d: LocalDate) = d.dayOfWeek == DayOfWeek.SATURDAY || d.dayOfWeek == DayOfWeek.SUNDAY
 
 private fun nthBusinessDay(ym: YearMonth, n: Int): Pair<LocalDate, Boolean> {
+    if (n < 0) {
+        var d = ym.atEndOfMonth()
+        while (isWeekend(d)) d = d.minusDays(1)
+        return d to false
+    }
     var count = 0
     var last = ym.atDay(1)
     for (d in 1..ym.lengthOfMonth()) {
@@ -74,7 +79,7 @@ private fun Reminder.resolve(k: Int): Pair<LocalDate, Boolean> {
         Freq.WEEKLY -> s.plusWeeks(k.toLong()) to false
         Freq.MONTHLY -> {
             val ym = YearMonth.from(s).plusMonths(k.toLong())
-            if (businessDay > 0) nthBusinessDay(ym, businessDay) else clampDay(ym)
+            if (businessDay != 0) nthBusinessDay(ym, businessDay) else clampDay(ym)
         }
         Freq.YEARLY -> clampDay(YearMonth.from(s).plusYears(k.toLong()))
     }
@@ -228,7 +233,7 @@ class Repo(private val dao: ReminderDao) {
             businessDay = if (n.type == Freq.MONTHLY) n.businessDay else 0,
             notifyWeekends = n.notifyWeekends
         )
-        if (r.businessDay > 0) r = r.copy(startDate = r.dateAt(0).toString())
+        if (r.businessDay != 0) r = r.copy(startDate = r.dateAt(0).toString())
         dao.insert(r)
     }
 
@@ -287,7 +292,7 @@ class Repo(private val dao: ReminderDao) {
         if (k > 0) dao.update(r.copy(occurrenceCount = k)) else dao.delete(r)
         if (!remove) {
             val rest = end?.let { (r.indexOf(it) - k + 1).coerceAtLeast(1) }
-            val nd = if (r.businessDay > 0) null else newDate
+            val nd = if (r.businessDay != 0) null else newDate
             dao.insert(
                 r.copy(
                     id = 0,
