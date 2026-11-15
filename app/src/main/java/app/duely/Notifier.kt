@@ -31,7 +31,9 @@ object Notifier {
     fun schedule(context: Context, slot: Int) {
         val zone = ZoneId.systemDefault()
         val now = ZonedDateTime.now(zone)
-        val next = now.toLocalDate().plusDays(1).atStartOfDay(zone)
+        val s = Prefs.load(context)
+        var next = now.toLocalDate().atTime(s.hour, s.minute).atZone(zone)
+        if (!next.isAfter(now)) next = next.plusDays(1)
         val request = OneTimeWorkRequestBuilder<NotifyWorker>()
             .setInitialDelay(Duration.between(now, next).toMillis(), TimeUnit.MILLISECONDS)
             .setInputData(workDataOf("slot" to slot))
@@ -66,6 +68,7 @@ object Notifier {
             .putExtra("d", o.dueDate.toString())
             .putExtra("i", o.icon)
             .putExtra("c", o.color)
+            .putExtra("w", o.notifyWeekends)
             .putExtra("nid", nid)
         val donePi = PendingIntent.getBroadcast(context, nid, done, flags)
         val openPi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), flags)
@@ -86,7 +89,10 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     override suspend fun doWork(): Result {
         val dao = Db.get(applicationContext).dao()
         val today = LocalDate.now()
-        pendingDue(dao.remindersNow(), dao.statesNow(), today).forEach { Notifier.show(applicationContext, it, today) }
+        val weekend = isWeekend(today)
+        pendingDue(dao.remindersNow(), dao.statesNow(), today)
+            .filter { !weekend || it.notifyWeekends }
+            .forEach { Notifier.show(applicationContext, it, today) }
         val slot = inputData.getInt("slot", 0)
         if (slot >= 0) Notifier.schedule(applicationContext, 1 - slot)
         return Result.success()
@@ -109,7 +115,8 @@ class MarkDoneReceiver : BroadcastReceiver() {
                     once = false,
                     adjusted = false,
                     icon = intent.getStringExtra("i") ?: "bill",
-                    color = intent.getIntExtra("c", 0)
+                    color = intent.getIntExtra("c", 0),
+                    notifyWeekends = intent.getBooleanExtra("w", true)
                 )
                 Repo(Db.get(context).dao()).complete(o, true)
                 context.getSystemService(NotificationManager::class.java).cancel(intent.getIntExtra("nid", 0))

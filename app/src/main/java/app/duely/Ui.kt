@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 
 package app.duely
 
@@ -9,12 +9,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +36,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -47,6 +52,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -55,12 +61,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -78,11 +87,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -93,8 +104,13 @@ private val Red = Color(0xFFFF6B6B)
 private val shortFmt = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 private val fullFmt = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
 private val monthFmt = DateTimeFormatter.ofPattern("MMMM", Locale.US)
+private val monthYearFmt = DateTimeFormatter.ofPattern("MMM yyyy", Locale.US)
+private val timeFmt = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+private val themeNames = listOf("Blue", "Green", "Orange", "Pink", "Purple", "Teal")
 
 data class Ask(val o: Occ, val edit: EditData?)
+
+data class MonthStat(val ym: YearMonth, val overdue: Int, val upcoming: Int, val done: Int)
 
 fun defaultCount(f: Freq): Int = when (f) {
     Freq.WEEKLY -> 4
@@ -104,19 +120,29 @@ fun defaultCount(f: Freq): Int = when (f) {
 }
 
 @Composable
-fun DuelyTheme(content: @Composable () -> Unit) {
+fun DuelyTheme(theme: Int, content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val scheme = if (Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(context) else darkColorScheme()
+    val scheme = if (theme < 0 && Build.VERSION.SDK_INT >= 31) {
+        dynamicDarkColorScheme(context)
+    } else if (theme < 0) {
+        schemeFor(ReminderColors[0])
+    } else {
+        schemeFor(ReminderColors[theme.coerceIn(0, ReminderColors.size - 1)])
+    }
     MaterialTheme(colorScheme = scheme, content = content)
 }
 
 @Composable
 fun Root(vm: VM) {
+    val context = LocalContext.current
     val reminders by vm.reminders.collectAsState()
     val states by vm.states.collectAsState()
+    val settings by vm.settings.collectAsState()
     val today = LocalDate.now()
     val cur = YearMonth.from(today)
     val earliest = remember(reminders, states) { earliestMonth(reminders, states, cur) }
+    val last = remember(reminders, states) { lastMonth(reminders, states, cur) }
+    val openEnded = reminders.any { it.occurrenceCount == null }
     val previous = remember(reminders, states, earliest, today) {
         var count = 0
         var oldest: YearMonth? = null
@@ -135,6 +161,8 @@ fun Root(vm: VM) {
     var formOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Occ?>(null) }
     var ask by remember { mutableStateOf<Ask?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showOverview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     Scaffold(
@@ -146,9 +174,9 @@ fun Root(vm: VM) {
             )
         }
     ) { pad ->
-        key(earliest) {
+        key(earliest, last) {
             val curPage = ChronoUnit.MONTHS.between(earliest, cur).toInt()
-            val total = curPage + 1200
+            val total = ChronoUnit.MONTHS.between(earliest, last).toInt() + 1
             val pager = rememberPagerState(
                 initialPage = ChronoUnit.MONTHS.between(earliest, shown).toInt().coerceIn(0, total - 1)
             ) { total }
@@ -156,6 +184,21 @@ fun Root(vm: VM) {
                 snapshotFlow { pager.settledPage }.collect { shown = earliest.plusMonths(it.toLong()) }
             }
             Column(Modifier.padding(pad).fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Duely",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                }
                 val oldest = previous.second
                 if (previous.first > 0 && oldest != null) {
                     Card(
@@ -179,9 +222,13 @@ fun Root(vm: VM) {
                         MonthPage(
                             ym = earliest.plusMonths(page.toLong()),
                             cur = cur,
+                            isFirst = page == 0,
+                            isLast = page == total - 1,
+                            openEnded = openEnded,
                             reminders = reminders,
                             states = states,
                             today = today,
+                            onOpenOverview = { showOverview = true },
                             onToday = { scope.launch { pager.animateScrollToPage(curPage) } },
                             onToggle = { o, done -> vm.go { complete(o, done) } },
                             onEdit = { editing = it; formOpen = true },
@@ -194,22 +241,48 @@ fun Root(vm: VM) {
                             enabled = pager.currentPage > 0
                         ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month") }
                         Spacer(Modifier.width(8.dp))
-                        FilledTonalIconButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }) {
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
-                        }
+                        FilledTonalIconButton(
+                            onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
+                            enabled = pager.currentPage < total - 1
+                        ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month") }
                     }
                 }
             }
+            if (showOverview) {
+                OverviewSheet(
+                    earliest = earliest,
+                    last = last,
+                    cur = cur,
+                    reminders = reminders,
+                    states = states,
+                    today = today,
+                    onPick = { ym ->
+                        showOverview = false
+                        scope.launch { pager.scrollToPage(ChronoUnit.MONTHS.between(earliest, ym).toInt()) }
+                    },
+                    onDismiss = { showOverview = false }
+                )
+            }
         }
+    }
+
+    if (showSettings) {
+        SettingsSheet(
+            settings = settings,
+            onTime = { h, m -> vm.setNotifyTime(h, m) },
+            onTheme = { vm.setTheme(it) },
+            onTest = { Notifier.runTest(context) },
+            onDismiss = { showSettings = false }
+        )
     }
 
     if (formOpen) {
         FormSheet(
             editing = editing,
             onDismiss = { formOpen = false },
-            onCreate = { t, n, ty, d, c, ic, co ->
+            onCreate = { n ->
                 formOpen = false
-                vm.go { create(t, n, ty, d, c, ic, co) }
+                vm.go { create(n) }
             },
             onEdit = { o, e ->
                 formOpen = false
@@ -252,9 +325,13 @@ fun Root(vm: VM) {
 fun MonthPage(
     ym: YearMonth,
     cur: YearMonth,
+    isFirst: Boolean,
+    isLast: Boolean,
+    openEnded: Boolean,
     reminders: List<Reminder>,
     states: List<OccurrenceState>,
     today: LocalDate,
+    onOpenOverview: () -> Unit,
     onToday: () -> Unit,
     onToggle: (Occ, Boolean) -> Unit,
     onEdit: (Occ) -> Unit,
@@ -271,10 +348,19 @@ fun MonthPage(
         if (upcoming.isNotEmpty()) "${upcoming.size} upcoming" else null,
         if (done.isNotEmpty()) "${done.size} done" else null
     ).joinToString(" · ").ifEmpty { "Nothing scheduled" }
+    val footer = listOfNotNull(
+        if (isFirst) "Nothing before this month." else null,
+        if (isLast) (if (openEnded) "Recurring reminders show up to 12 months ahead." else "Nothing scheduled after this month.") else null
+    ).joinToString(" ")
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(start = 24.dp, end = 128.dp, top = 12.dp, bottom = 8.dp)) {
-            Text("${ym.year}", style = MaterialTheme.typography.labelLarge, color = muted)
-            Text(ym.format(monthFmt), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Medium)
+            Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenOverview)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${ym.year}", style = MaterialTheme.typography.labelLarge, color = muted)
+                    Icon(Icons.Default.ExpandMore, contentDescription = "Open overview", tint = muted, modifier = Modifier.size(18.dp))
+                }
+                Text(ym.format(monthFmt), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Medium)
+            }
             Text(
                 summary,
                 style = MaterialTheme.typography.titleSmall,
@@ -292,6 +378,17 @@ fun MonthPage(
             section("Overdue", overdue, Red, today, onToggle, onEdit, onDelete)
             section("Upcoming", upcoming, primary, today, onToggle, onEdit, onDelete)
             section("Done", done, muted, today, onToggle, onEdit, onDelete)
+            if (footer.isNotEmpty()) {
+                item(key = "footer") {
+                    Text(
+                        footer,
+                        Modifier.fillMaxWidth().padding(top = 16.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = muted
+                    )
+                }
+            }
         }
     }
 }
@@ -381,10 +478,222 @@ fun OccCard(o: Occ, today: LocalDate, onToggle: (Occ, Boolean) -> Unit, onEdit: 
 }
 
 @Composable
+fun OverviewSheet(
+    earliest: YearMonth,
+    last: YearMonth,
+    cur: YearMonth,
+    reminders: List<Reminder>,
+    states: List<OccurrenceState>,
+    today: LocalDate,
+    onPick: (YearMonth) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val rows = remember(earliest, last, reminders, states, today) {
+        val stats = generateSequence(earliest) { it.plusMonths(1) }.takeWhile { it <= last }.map { m ->
+            val occ = occurrencesFor(m, reminders, states)
+            MonthStat(
+                m,
+                occ.count { it.overdue(today) },
+                occ.count { it.completedAt == null && !it.overdue(today) },
+                occ.count { it.completedAt != null }
+            )
+        }.toList()
+        val out = mutableListOf<Any>()
+        var year = -1
+        stats.forEach {
+            if (it.ym.year != year) {
+                year = it.ym.year
+                out += year
+            }
+            out += it
+        }
+        out
+    }
+    val startIndex = rows.indexOfFirst { it is MonthStat && it.ym == cur }.let { (it - 2).coerceAtLeast(0) }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text("Overview", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.headlineSmall)
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(rows, key = { if (it is MonthStat) it.ym.toString() else "y$it" }) { row ->
+                if (row is MonthStat) {
+                    MonthRow(row, row.ym == cur) { onPick(row.ym) }
+                } else {
+                    Text(
+                        "$row",
+                        Modifier.padding(start = 8.dp, top = 12.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthRow(stat: MonthStat, current: Boolean, onClick: () -> Unit) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(stat.ym.format(monthFmt), style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (stat.overdue + stat.upcoming + stat.done == 0) {
+                    Text("—", color = muted)
+                }
+                if (stat.overdue > 0) Pill("${stat.overdue} overdue", Red)
+                if (stat.upcoming > 0) Pill("${stat.upcoming} upcoming", MaterialTheme.colorScheme.primary)
+                if (stat.done > 0) Pill("${stat.done} done", muted)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Pill(text: String, color: Color) {
+    Box(Modifier.clip(RoundedCornerShape(10.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+        Text(text, style = MaterialTheme.typography.labelMedium, color = color)
+    }
+}
+
+@Composable
+fun SettingsSheet(
+    settings: AppSettings,
+    onTime: (Int, Int) -> Unit,
+    onTheme: (Int) -> Unit,
+    onTest: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var timeDialog by remember { mutableStateOf(false) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val effective = if (settings.theme < 0 && Build.VERSION.SDK_INT < 31) 0 else settings.theme
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("Settings", style = MaterialTheme.typography.headlineSmall)
+            Text("Notification time", style = MaterialTheme.typography.labelLarge)
+            Card(
+                onClick = { timeDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(LocalTime.of(settings.hour, settings.minute).format(timeFmt), style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        "Notifications are approximate. Android may delay them by a few minutes or even hours to save battery, so one can arrive after this time.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = muted
+                    )
+                }
+            }
+            Text("Theme color", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    Box(
+                        Modifier.size(38.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .then(if (effective < 0) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
+                            .clickable { onTheme(-1) },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Default.Palette, contentDescription = "Wallpaper colors", modifier = Modifier.size(20.dp)) }
+                }
+                ReminderColors.forEachIndexed { i, c ->
+                    Box(
+                        Modifier.size(38.dp)
+                            .clip(CircleShape)
+                            .background(c)
+                            .then(if (effective == i) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
+                            .clickable { onTheme(i) }
+                    )
+                }
+            }
+            Text(
+                if (effective < 0) "Wallpaper colors" else themeNames[effective.coerceIn(0, themeNames.size - 1)],
+                style = MaterialTheme.typography.bodySmall,
+                color = muted
+            )
+            OutlinedButton(onClick = onTest, modifier = Modifier.fillMaxWidth()) { Text("Send test notification (in 10 s)") }
+        }
+    }
+    if (timeDialog) {
+        val st = rememberTimePickerState(initialHour = settings.hour, initialMinute = settings.minute, is24Hour = false)
+        AlertDialog(
+            onDismissRequest = { timeDialog = false },
+            confirmButton = { TextButton(onClick = { onTime(st.hour, st.minute); timeDialog = false }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { timeDialog = false }) { Text("Cancel") } },
+            text = { TimePicker(state = st) }
+        )
+    }
+}
+
+@Composable
+private fun DatePreview(dates: List<Pair<LocalDate, Boolean>>, first: LocalDate, openEnded: Boolean) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val shown = dates.take(12)
+    val hidden = dates.drop(12)
+    val hiddenAdjusted = hidden.count { it.second }
+    val notes = listOfNotNull(
+        if (shown.any { it.second }) "Red dates were moved to the last valid day." else null,
+        if (hiddenAdjusted > 0) "$hiddenAdjusted more adjusted dates further ahead." else null,
+        if (openEnded) "Continues indefinitely." else null
+    )
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Upcoming dates", style = MaterialTheme.typography.labelLarge, color = muted)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            shown.forEach { (d, adjusted) ->
+                DateChip(d.format(if (d.year == first.year) shortFmt else fullFmt), adjusted, false)
+            }
+            if (hidden.isNotEmpty()) DateChip("+${hidden.size} more", false, true)
+        }
+        notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
+    }
+}
+
+@Composable
+private fun DateChip(text: String, adjusted: Boolean, subtle: Boolean) {
+    Box(
+        Modifier.clip(RoundedCornerShape(12.dp))
+            .background(if (adjusted) Red.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (adjusted) Red else if (subtle) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified
+        )
+    }
+}
+
+@Composable
 fun FormSheet(
     editing: Occ?,
     onDismiss: () -> Unit,
-    onCreate: (String, String?, Freq, LocalDate, Int?, String, Int) -> Unit,
+    onCreate: (NewReminder) -> Unit,
     onEdit: (Occ, EditData) -> Unit
 ) {
     var title by remember { mutableStateOf(editing?.title ?: "") }
@@ -392,12 +701,19 @@ fun FormSheet(
     var freq by remember { mutableStateOf(Freq.ONCE) }
     var limited by remember { mutableStateOf(false) }
     var countText by remember { mutableStateOf("") }
+    var businessMode by remember { mutableStateOf(false) }
+    var businessText by remember { mutableStateOf("5") }
+    var weekends by remember { mutableStateOf(editing?.notifyWeekends ?: true) }
     var date by remember { mutableStateOf(editing?.dueDate ?: LocalDate.now()) }
     var icon by remember { mutableStateOf(editing?.icon ?: "bill") }
     var color by remember { mutableStateOf(editing?.color ?: 0) }
     var picker by remember { mutableStateOf(false) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val count = if (limited && freq != Freq.ONCE) countText.toIntOrNull() else null
-    val valid = title.isNotBlank() && (editing != null || !limited || freq == Freq.ONCE || (count ?: 0) >= 1)
+    val business = if (freq == Freq.MONTHLY && businessMode) (businessText.toIntOrNull() ?: 0).coerceIn(0, 23) else 0
+    val valid = title.isNotBlank() &&
+        (editing != null || !limited || freq == Freq.ONCE || (count ?: 0) >= 1) &&
+        (editing != null || !(freq == Freq.MONTHLY && businessMode) || business >= 1)
     val accent = colorFor(color)
     val frequencies = listOf(Freq.ONCE to "Once", Freq.WEEKLY to "Weekly", Freq.MONTHLY to "Monthly", Freq.YEARLY to "Yearly")
 
@@ -428,6 +744,7 @@ fun FormSheet(
                             onClick = {
                                 freq = f
                                 countText = defaultCount(f).toString()
+                                if (f != Freq.MONTHLY) businessMode = false
                             },
                             shape = SegmentedButtonDefaults.itemShape(i, frequencies.size),
                             icon = {}
@@ -460,9 +777,47 @@ fun FormSheet(
                         )
                     }
                 }
+                if (freq == Freq.MONTHLY) {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        SegmentedButton(
+                            selected = !businessMode,
+                            onClick = { businessMode = false },
+                            shape = SegmentedButtonDefaults.itemShape(0, 2),
+                            icon = {}
+                        ) { Text("Day of month", maxLines = 1) }
+                        SegmentedButton(
+                            selected = businessMode,
+                            onClick = { businessMode = true },
+                            shape = SegmentedButtonDefaults.itemShape(1, 2),
+                            icon = {}
+                        ) { Text("Business day", maxLines = 1) }
+                    }
+                    if (businessMode) {
+                        OutlinedTextField(
+                            businessText,
+                            { businessText = it.filter(Char::isDigit).take(2) },
+                            label = { Text("Business day number (1–23)") },
+                            supportingText = { Text("Counts Monday to Friday. Holidays are not considered.") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
             }
             OutlinedButton(onClick = { picker = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (editing == null && freq != Freq.ONCE) "First due: ${date.format(fullFmt)}" else "Due: ${date.format(fullFmt)}")
+                Text(
+                    if (editing == null && freq == Freq.MONTHLY && businessMode) "Starting month: ${date.format(monthYearFmt)}"
+                    else if (editing == null && freq != Freq.ONCE) "First due: ${date.format(fullFmt)}"
+                    else "Due: ${date.format(fullFmt)}"
+                )
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Notify on weekends", style = MaterialTheme.typography.bodyLarge)
+                    Text("Off: skips Saturday and Sunday and notifies on Monday.", style = MaterialTheme.typography.bodySmall, color = muted)
+                }
+                Switch(checked = weekends, onCheckedChange = { weekends = it })
             }
             Text("Icon", style = MaterialTheme.typography.labelLarge)
             ReminderIcons.chunked(6).forEach { rowItems ->
@@ -477,7 +832,7 @@ fun FormSheet(
                                 .clickable { icon = k },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(img, contentDescription = k, tint = if (sel) accent else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(img, contentDescription = k, tint = if (sel) accent else muted)
                         }
                     }
                 }
@@ -495,21 +850,8 @@ fun FormSheet(
                 }
             }
             if (editing == null) {
-                val preview = previewDates(date, freq, count)
-                if (preview.isNotEmpty()) {
-                    Text("Dates", style = MaterialTheme.typography.labelLarge)
-                    Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
-                        preview.forEach { (d, adjusted) ->
-                            Text(
-                                if (adjusted) "${d.format(fullFmt)} (adjusted from day ${date.dayOfMonth})" else d.format(fullFmt),
-                                color = if (adjusted) Red else Color.Unspecified
-                            )
-                        }
-                    }
-                    if (!limited) {
-                        Text("Continues indefinitely", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                val preview = previewDates(date, freq, count, business)
+                if (preview.isNotEmpty()) DatePreview(preview, date, !limited)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -519,9 +861,9 @@ fun FormSheet(
                     onClick = {
                         val n = note.trim().ifEmpty { null }
                         if (editing == null) {
-                            onCreate(title.trim(), n, freq, date, count, icon, color)
+                            onCreate(NewReminder(title.trim(), n, freq, date, count, icon, color, business, weekends))
                         } else {
-                            onEdit(editing, EditData(title.trim(), n, date, icon, color))
+                            onEdit(editing, EditData(title.trim(), n, date, icon, color, weekends))
                         }
                     }
                 ) { Text("Save") }

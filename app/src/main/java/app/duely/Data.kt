@@ -1,6 +1,7 @@
 package app.duely
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -13,6 +14,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 enum class Freq { ONCE, WEEKLY, MONTHLY, YEARLY }
@@ -28,7 +31,9 @@ data class Reminder(
     val anchorDay: Int,
     val occurrenceCount: Int?,
     val icon: String,
-    val color: Int
+    val color: Int,
+    @ColumnInfo(defaultValue = "0") val businessDay: Int,
+    @ColumnInfo(defaultValue = "1") val notifyWeekends: Boolean
 )
 
 @Entity(indices = [Index(value = ["groupId", "period"], unique = true)])
@@ -43,7 +48,8 @@ data class OccurrenceState(
     val deleted: Boolean,
     val isException: Boolean,
     val icon: String,
-    val color: Int
+    val color: Int,
+    @ColumnInfo(defaultValue = "1") val notifyWeekends: Boolean
 )
 
 @Dao
@@ -82,7 +88,15 @@ interface ReminderDao {
     suspend fun clearFuture(g: String, p: String)
 }
 
-@Database(entities = [Reminder::class, OccurrenceState::class], version = 3, exportSchema = false)
+private val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE Reminder ADD COLUMN businessDay INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE Reminder ADD COLUMN notifyWeekends INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE OccurrenceState ADD COLUMN notifyWeekends INTEGER NOT NULL DEFAULT 1")
+    }
+}
+
+@Database(entities = [Reminder::class, OccurrenceState::class], version = 4, exportSchema = false)
 abstract class Db : RoomDatabase() {
     abstract fun dao(): ReminderDao
 
@@ -91,6 +105,7 @@ abstract class Db : RoomDatabase() {
 
         fun get(context: Context): Db = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, Db::class.java, "duely.db")
+                .addMigrations(MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
                 .also { instance = it }

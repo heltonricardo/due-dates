@@ -1,5 +1,6 @@
 package app.duely
 
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -17,26 +18,71 @@ data class Occ(
     val once: Boolean,
     val adjusted: Boolean,
     val icon: String,
-    val color: Int
+    val color: Int,
+    val notifyWeekends: Boolean
 ) {
     val key get() = "$groupId|$period"
     fun overdue(today: LocalDate) = completedAt == null && dueDate.isBefore(today)
 }
 
-private fun Reminder.clamp(ym: YearMonth): LocalDate = ym.atDay(minOf(anchorDay, ym.lengthOfMonth()))
+data class EditData(
+    val title: String,
+    val note: String?,
+    val date: LocalDate,
+    val icon: String,
+    val color: Int,
+    val notifyWeekends: Boolean
+)
 
-fun Reminder.dateAt(k: Int): LocalDate {
+data class NewReminder(
+    val title: String,
+    val note: String?,
+    val type: Freq,
+    val date: LocalDate,
+    val count: Int?,
+    val icon: String,
+    val color: Int,
+    val businessDay: Int,
+    val notifyWeekends: Boolean
+)
+
+fun isWeekend(d: LocalDate) = d.dayOfWeek == DayOfWeek.SATURDAY || d.dayOfWeek == DayOfWeek.SUNDAY
+
+private fun nthBusinessDay(ym: YearMonth, n: Int): Pair<LocalDate, Boolean> {
+    var count = 0
+    var last = ym.atDay(1)
+    for (d in 1..ym.lengthOfMonth()) {
+        val date = ym.atDay(d)
+        if (!isWeekend(date)) {
+            count++
+            last = date
+            if (count == n) return date to false
+        }
+    }
+    return last to true
+}
+
+private fun Reminder.clampDay(ym: YearMonth): Pair<LocalDate, Boolean> {
+    val d = minOf(anchorDay, ym.lengthOfMonth())
+    return ym.atDay(d) to (d < anchorDay)
+}
+
+private fun Reminder.resolve(k: Int): Pair<LocalDate, Boolean> {
     val s = LocalDate.parse(startDate)
     return when (type) {
-        Freq.ONCE -> s
-        Freq.WEEKLY -> s.plusWeeks(k.toLong())
-        Freq.MONTHLY -> clamp(YearMonth.from(s).plusMonths(k.toLong()))
-        Freq.YEARLY -> clamp(YearMonth.from(s).plusYears(k.toLong()))
+        Freq.ONCE -> s to false
+        Freq.WEEKLY -> s.plusWeeks(k.toLong()) to false
+        Freq.MONTHLY -> {
+            val ym = YearMonth.from(s).plusMonths(k.toLong())
+            if (businessDay > 0) nthBusinessDay(ym, businessDay) else clampDay(ym)
+        }
+        Freq.YEARLY -> clampDay(YearMonth.from(s).plusYears(k.toLong()))
     }
 }
 
-fun Reminder.isAdjusted(k: Int): Boolean =
-    (type == Freq.MONTHLY || type == Freq.YEARLY) && dateAt(k).dayOfMonth < anchorDay
+fun Reminder.dateAt(k: Int): LocalDate = resolve(k).first
+
+fun Reminder.isAdjusted(k: Int): Boolean = resolve(k).second
 
 fun Reminder.indexOf(date: LocalDate): Int {
     val s = LocalDate.parse(startDate)
@@ -100,7 +146,8 @@ fun occurrencesFor(ym: YearMonth, reminders: List<Reminder>, states: List<Occurr
                 once = r.type == Freq.ONCE,
                 adjusted = r.isAdjusted(k),
                 icon = r.icon,
-                color = r.color
+                color = r.color,
+                notifyWeekends = r.notifyWeekends
             )
         }
     }
@@ -116,7 +163,8 @@ fun occurrencesFor(ym: YearMonth, reminders: List<Reminder>, states: List<Occurr
             once = it.groupId in onceGroups,
             adjusted = false,
             icon = it.icon,
-            color = it.color
+            color = it.color,
+            notifyWeekends = it.notifyWeekends
         )
     }
     return (fromRules + fromStates).sortedWith(compareBy({ it.dueDate }, { it.title }))
@@ -127,6 +175,13 @@ fun earliestMonth(reminders: List<Reminder>, states: List<OccurrenceState>, curr
         states.map { YearMonth.from(LocalDate.parse(it.period)) } +
         states.map { YearMonth.from(LocalDate.parse(it.dueDate)) } +
         current).min()
+
+fun lastMonth(reminders: List<Reminder>, states: List<OccurrenceState>, current: YearMonth): YearMonth {
+    val ends = reminders.mapNotNull { r -> r.occurrenceCount?.let { c -> YearMonth.from(r.dateAt(c - 1)) } }
+    val fromStates = states.map { YearMonth.from(LocalDate.parse(it.dueDate)) }
+    val horizon = if (reminders.any { it.occurrenceCount == null }) listOf(current.plusMonths(12)) else emptyList()
+    return (ends + fromStates + horizon + current).max()
+}
 
 fun pendingDue(reminders: List<Reminder>, states: List<OccurrenceState>, today: LocalDate): List<Occ> {
     val current = YearMonth.from(today)
@@ -139,7 +194,7 @@ fun pendingDue(reminders: List<Reminder>, states: List<OccurrenceState>, today: 
     return out
 }
 
-fun previewDates(first: LocalDate, type: Freq, count: Int?): List<Pair<LocalDate, Boolean>> {
+fun previewDates(first: LocalDate, type: Freq, count: Int?, businessDay: Int): List<Pair<LocalDate, Boolean>> {
     if (type == Freq.ONCE) return emptyList()
     val r = Reminder(
         groupId = "",
@@ -150,29 +205,31 @@ fun previewDates(first: LocalDate, type: Freq, count: Int?): List<Pair<LocalDate
         anchorDay = first.dayOfMonth,
         occurrenceCount = null,
         icon = "bill",
-        color = 0
+        color = 0,
+        businessDay = if (type == Freq.MONTHLY) businessDay else 0,
+        notifyWeekends = true
     )
     val n = if (count == null) 12 else count.coerceIn(0, 120)
     return (0 until n).map { r.dateAt(it) to r.isAdjusted(it) }
 }
 
-data class EditData(val title: String, val note: String?, val date: LocalDate, val icon: String, val color: Int)
-
 class Repo(private val dao: ReminderDao) {
-    suspend fun create(title: String, note: String?, type: Freq, first: LocalDate, count: Int?, icon: String, color: Int) {
-        dao.insert(
-            Reminder(
-                groupId = UUID.randomUUID().toString(),
-                title = title,
-                note = note,
-                type = type,
-                startDate = first.toString(),
-                anchorDay = first.dayOfMonth,
-                occurrenceCount = if (type == Freq.ONCE) 1 else count,
-                icon = icon,
-                color = color
-            )
+    suspend fun create(n: NewReminder) {
+        var r = Reminder(
+            groupId = UUID.randomUUID().toString(),
+            title = n.title,
+            note = n.note,
+            type = n.type,
+            startDate = n.date.toString(),
+            anchorDay = n.date.dayOfMonth,
+            occurrenceCount = if (n.type == Freq.ONCE) 1 else n.count,
+            icon = n.icon,
+            color = n.color,
+            businessDay = if (n.type == Freq.MONTHLY) n.businessDay else 0,
+            notifyWeekends = n.notifyWeekends
         )
+        if (r.businessDay > 0) r = r.copy(startDate = r.dateAt(0).toString())
+        dao.insert(r)
     }
 
     private suspend fun stateOf(o: Occ): OccurrenceState =
@@ -187,7 +244,8 @@ class Repo(private val dao: ReminderDao) {
                 deleted = false,
                 isException = false,
                 icon = o.icon,
-                color = o.color
+                color = o.color,
+                notifyWeekends = o.notifyWeekends
             )
 
     suspend fun complete(o: Occ, done: Boolean) {
@@ -211,7 +269,8 @@ class Repo(private val dao: ReminderDao) {
                 dueDate = e.date.toString(),
                 isException = true,
                 icon = e.icon,
-                color = e.color
+                color = e.color,
+                notifyWeekends = e.notifyWeekends
             )
         )
 
@@ -228,16 +287,18 @@ class Repo(private val dao: ReminderDao) {
         if (k > 0) dao.update(r.copy(occurrenceCount = k)) else dao.delete(r)
         if (!remove) {
             val rest = end?.let { (r.indexOf(it) - k + 1).coerceAtLeast(1) }
+            val nd = if (r.businessDay > 0) null else newDate
             dao.insert(
                 r.copy(
                     id = 0,
                     title = e?.title ?: r.title,
                     note = e?.note,
-                    startDate = (newDate ?: p).toString(),
-                    anchorDay = newDate?.dayOfMonth ?: r.anchorDay,
+                    startDate = (nd ?: p).toString(),
+                    anchorDay = nd?.dayOfMonth ?: r.anchorDay,
                     occurrenceCount = rest,
                     icon = e?.icon ?: r.icon,
-                    color = e?.color ?: r.color
+                    color = e?.color ?: r.color,
+                    notifyWeekends = e?.notifyWeekends ?: r.notifyWeekends
                 )
             )
         }
