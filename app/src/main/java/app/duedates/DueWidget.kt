@@ -2,6 +2,7 @@ package app.duedates
 
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -10,6 +11,7 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.LocalContext
+import androidx.glance.action.Action
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
@@ -80,7 +82,9 @@ class MarkDoneAction : ActionCallback {
 
 @Composable
 private fun WidgetContent(items: List<Occ>, today: LocalDate) {
-    val name = LocalContext.current.getString(R.string.app_name)
+    val context = LocalContext.current
+    val name = context.getString(R.string.app_name)
+    val open = actionStartActivity(Intent(context, MainActivity::class.java))
     val red = ColorProvider(WidgetRed)
     val overdueCount = items.count { it.overdue(today) }
     Column(
@@ -90,7 +94,7 @@ private fun WidgetContent(items: List<Occ>, today: LocalDate) {
             .padding(14.dp)
     ) {
         Row(
-            GlanceModifier.fillMaxWidth().clickable(actionStartActivity<MainActivity>()),
+            GlanceModifier.fillMaxWidth().clickable(open),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -107,14 +111,14 @@ private fun WidgetContent(items: List<Occ>, today: LocalDate) {
             Text("All caught up", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 14.sp))
         } else {
             LazyColumn {
-                items(items.take(15), itemId = { it.key.hashCode().toLong() }) { o -> WidgetRow(o, today) }
+                items(items.take(15), itemId = { it.key.hashCode().toLong() }) { o -> WidgetRow(o, today, open) }
             }
         }
     }
 }
 
 @Composable
-private fun WidgetRow(o: Occ, today: LocalDate) {
+private fun WidgetRow(o: Occ, today: LocalDate, open: Action) {
     val late = o.overdue(today)
     val sub = buildString {
         append(o.dueDate.format(widgetDate))
@@ -124,7 +128,7 @@ private fun WidgetRow(o: Occ, today: LocalDate) {
         }
     }
     Row(
-        GlanceModifier.fillMaxWidth().padding(vertical = 6.dp).clickable(actionStartActivity<MainActivity>()),
+        GlanceModifier.fillMaxWidth().padding(vertical = 6.dp).clickable(open),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(GlanceModifier.size(10.dp).background(ColorProvider(colorFor(o.color))).cornerRadius(5.dp)) {}
