@@ -2,6 +2,14 @@
 
 A simple, private Android app for recurring and one-time due dates, such as bills and payments. It reminds you; it does not track money. No amounts, no accounts, no internet.
 
+## Install
+
+1. Open the [Releases](../../releases) page and download the latest `DueDates-*.apk`.
+2. Open the file on your phone and allow installing from this source if Android asks.
+3. Requires Android 8.0 or later.
+
+Updates install over the previous version as long as they come from the same releases.
+
 ## Features
 
 ### Reminders
@@ -39,6 +47,7 @@ A simple, private Android app for recurring and one-time due dates, such as bill
 - Navigation limits: the first month is the earliest reminder. The last month is the last scheduled one, or 12 months ahead when a reminder never ends. A note appears at both ends.
 - **Overview sheet:** tap the year or month in the header to see every month grouped by year, with counts of overdue, upcoming, and done. Tap a month to go there.
 - Tap a card for Edit and Delete. Use the check box to mark as done.
+- **Search:** the search icon at the top looks through the titles and notes of all reminders, ignoring case and accents. Results show every matching occurrence, with the same actions as on the main screen and a "Show in month" shortcut.
 
 ### Notifications
 - A daily check at the time you choose in Settings (default 12:00 AM), scheduled with WorkManager. It survives reboots.
@@ -63,7 +72,7 @@ A simple, private Android app for recurring and one-time due dates, such as bill
 
 ### Data and privacy
 - All data is stored locally in a Room database. The app has no internet permission.
-- No accounts, analytics, or ads. See `PRIVACY_POLICY.md` and `PRIVACY_POLICY.pt-BR.md`.
+- No accounts, analytics, or ads. See [Privacy](#privacy).
 - Only rules and occurrences with their own state are stored. Other dates are calculated when a month is shown, so recurring reminders have no end of navigation and no database growth.
 
 ## Tech
@@ -88,6 +97,8 @@ Kotlin, Jetpack Compose with Material 3, Room, WorkManager, Jetpack Glance. Mini
 2. Set Gradle JDK to the embedded JetBrains Runtime (JDK 17 to 21). The Gradle version in use does not support JDK 25.
 3. Sync, connect a phone with USB debugging enabled, and run.
 
+To build a release APK, use Build > Generate Signed App Bundle / APK > APK, and create or choose a keystore. Always sign with the same keystore, otherwise updates will not install over the previous version. Before each release, raise `versionCode` and update `versionName` in `app/build.gradle.kts`, then attach the APK to a GitHub release.
+
 The app name is in `app/src/main/res/values/strings.xml` (`app_name`).
 
 ## Known limits
@@ -99,15 +110,10 @@ The app name is in `app/src/main/res/values/strings.xml` (`app_name`).
 - Undo restores the whole state from before the action, so changes made in between are also reverted.
 - The widget uses system colors, not the in-app theme color.
 
-## Not included yet
+## Privacy
 
-Snooze, advance notice, search and filters, recurrences such as every N months, per-reminder notification time, holiday calendars, light theme.
+The app stores everything locally on your device. It has no internet permission, no accounts, no analytics, and no ads, and it never sends data anywhere. The only permission it asks for is notifications. If automatic backup is enabled on your device, Android may include the app data in your Google backup, which Google handles under its own terms. Files created with Export are saved where you choose.
 
-## Before publishing
+## License
 
-- Change `applicationId` and the package (`app.duely`) to the final name. It cannot change after release.
-- Check that the name is available on Google Play and in trademark databases.
-- Host the privacy policy at a public URL, fill in the contact placeholders, and add the link to the store listing.
-- In Play Console, answer the Data safety form as "no data collected" and complete the content rating.
-- Create a signed release build (Build > Generate Signed App Bundle).
-- Replace the placeholder icon if you want a custom design, and add screenshots.
+Released under the [MIT License](LICENSE).

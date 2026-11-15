@@ -1,0 +1,2 @@
+-keep class app.duedates.** { *; }
+-keepclassmembers enum * { *; }

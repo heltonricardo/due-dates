@@ -6,10 +6,10 @@ plugins {
 }
 
 android {
-    namespace = "app.duely"
+    namespace = "app.duedates"
     compileSdk = 35
     defaultConfig {
-        applicationId = "app.duely"
+        applicationId = "app.duedates"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -17,7 +17,9 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {
