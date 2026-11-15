@@ -1,5 +1,6 @@
 package app.duely
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -26,6 +27,9 @@ import java.util.concurrent.TimeUnit
 
 object Notifier {
     private const val CHANNEL = "reminders_v2"
+    private const val GROUP = "pending"
+    private const val SUMMARY_ID = 1
+    private const val MAX_INDIVIDUAL = 3
     private val fmt = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
     fun schedule(context: Context, slot: Int) {
@@ -54,12 +58,23 @@ object Notifier {
         schedule(context, 0)
     }
 
-    fun show(context: Context, o: Occ, today: LocalDate) {
+    private fun manager(context: Context): NotificationManager {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.deleteNotificationChannel("reminders")
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_DEFAULT))
+        return nm
+    }
+
+    private fun openIntent(context: Context): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+    private fun post(context: Context, nm: NotificationManager, o: Occ, today: LocalDate, grouped: Boolean) {
         val nid = o.key.hashCode()
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val done = Intent(context, MarkDoneReceiver::class.java)
             .putExtra("g", o.groupId)
             .putExtra("p", o.period)
@@ -70,18 +85,64 @@ object Notifier {
             .putExtra("c", o.color)
             .putExtra("w", o.notifyWeekends)
             .putExtra("nid", nid)
-        val donePi = PendingIntent.getBroadcast(context, nid, done, flags)
-        val openPi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), flags)
+        val donePi = PendingIntent.getBroadcast(
+            context,
+            nid,
+            done,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val text = if (o.dueDate.isBefore(today)) "Overdue since ${o.dueDate.format(fmt)}" else "Due today"
-        val notification = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+        val b = NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_notify)
             .setContentTitle(o.title)
             .setContentText(text)
-            .setContentIntent(openPi)
+            .setContentIntent(openIntent(context))
             .setAutoCancel(true)
             .addAction(0, "Mark as done", donePi)
+        if (grouped) b.setGroup(GROUP).setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
+        nm.notify(nid, b.build())
+    }
+
+    private fun summary(context: Context, titles: List<String>): Notification {
+        val inbox = NotificationCompat.InboxStyle()
+        titles.take(6).forEach { inbox.addLine(it) }
+        if (titles.size > 6) inbox.setSummaryText("+${titles.size - 6} more")
+        return NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_notify)
+            .setContentTitle("${titles.size} pending reminders")
+            .setContentText("Tap to review")
+            .setStyle(inbox)
+            .setGroup(GROUP)
+            .setGroupSummary(true)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openIntent(context))
+            .setAutoCancel(true)
             .build()
-        nm.notify(nid, notification)
+    }
+
+    fun showAll(context: Context, list: List<Occ>, today: LocalDate) {
+        val nm = manager(context)
+        if (list.size > MAX_INDIVIDUAL) {
+            list.forEach { post(context, nm, it, today, true) }
+            nm.notify(SUMMARY_ID, summary(context, list.map { it.title }))
+        } else {
+            nm.cancel(SUMMARY_ID)
+            list.forEach { post(context, nm, it, today, false) }
+        }
+    }
+
+    fun refreshSummary(context: Context) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val active = nm.activeNotifications
+        if (active.none { it.id == SUMMARY_ID }) return
+        val children = active.filter { it.id != SUMMARY_ID && it.notification.group == GROUP }
+        if (children.isEmpty()) {
+            nm.cancel(SUMMARY_ID)
+            return
+        }
+        val titles = children.map { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: "" }
+        nm.notify(SUMMARY_ID, summary(context, titles))
     }
 }
 
@@ -90,9 +151,8 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val dao = Db.get(applicationContext).dao()
         val today = LocalDate.now()
         val weekend = isWeekend(today)
-        pendingDue(dao.remindersNow(), dao.statesNow(), today)
-            .filter { !weekend || it.notifyWeekends }
-            .forEach { Notifier.show(applicationContext, it, today) }
+        val list = pendingDue(dao.remindersNow(), dao.statesNow(), today).filter { !weekend || it.notifyWeekends }
+        Notifier.showAll(applicationContext, list, today)
         val slot = inputData.getInt("slot", 0)
         if (slot >= 0) Notifier.schedule(applicationContext, 1 - slot)
         return Result.success()
@@ -120,6 +180,7 @@ class MarkDoneReceiver : BroadcastReceiver() {
                 )
                 Repo(Db.get(context).dao()).complete(o, true)
                 context.getSystemService(NotificationManager::class.java).cancel(intent.getIntExtra("nid", 0))
+                Notifier.refreshSummary(context)
             } finally {
                 pending.finish()
             }

@@ -84,6 +84,18 @@ interface ReminderDao {
     @Delete
     suspend fun deleteState(s: OccurrenceState)
 
+    @Query("DELETE FROM Reminder")
+    suspend fun clearReminders()
+
+    @Query("DELETE FROM OccurrenceState")
+    suspend fun clearStates()
+
+    @Insert
+    suspend fun insertReminders(list: List<Reminder>)
+
+    @Insert
+    suspend fun insertStates(list: List<OccurrenceState>)
+
     @Query("DELETE FROM OccurrenceState WHERE groupId = :g AND period >= :p AND completedAt IS NULL")
     suspend fun clearFuture(g: String, p: String)
 }

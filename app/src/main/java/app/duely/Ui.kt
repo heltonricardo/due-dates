@@ -2,7 +2,10 @@
 
 package app.duely
 
+import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +64,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -165,8 +172,19 @@ fun Root(vm: VM) {
     var showSettings by remember { mutableStateOf(false) }
     var showOverview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        vm.events.collect { e ->
+            snackbar.currentSnackbarData?.dismiss()
+            scope.launch {
+                val r = snackbar.showSnackbar(e.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+                if (r == SnackbarResult.ActionPerformed) vm.restore(e)
+            }
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { editing = null; formOpen = true },
@@ -231,9 +249,9 @@ fun Root(vm: VM) {
                             today = today,
                             onOpenOverview = { showOverview = true },
                             onToday = { scope.launch { pager.animateScrollToPage(curPage) } },
-                            onToggle = { o, done -> vm.go { complete(o, done) } },
+                            onToggle = { o, done -> vm.goUndoable(if (done) "Marked as done" else "Marked as pending") { complete(o, done) } },
                             onEdit = { editing = it; formOpen = true },
-                            onDelete = { o -> if (o.once) vm.go { deleteOne(o) } else ask = Ask(o, null) }
+                            onDelete = { o -> if (o.once) vm.goUndoable("Reminder deleted") { deleteOne(o) } else ask = Ask(o, null) }
                         )
                     }
                     Row(Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 16.dp)) {
@@ -273,6 +291,14 @@ fun Root(vm: VM) {
             onTime = { h, m -> vm.setNotifyTime(h, m) },
             onTheme = { vm.setTheme(it) },
             onTest = { Notifier.runTest(context) },
+            onExport = { uri ->
+                showSettings = false
+                vm.exportTo(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) "Backup saved" else "Export failed") } }
+            },
+            onImport = { uri ->
+                showSettings = false
+                vm.importFrom(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) "Backup restored" else "Invalid backup file") } }
+            },
             onDismiss = { showSettings = false }
         )
     }
@@ -287,7 +313,7 @@ fun Root(vm: VM) {
             },
             onEdit = { o, e ->
                 formOpen = false
-                if (o.once) vm.go { editOne(o, e) } else ask = Ask(o, e)
+                if (o.once) vm.goUndoable("Changes saved") { editOne(o, e) } else ask = Ask(o, e)
             }
         )
     }
@@ -303,16 +329,16 @@ fun Root(vm: VM) {
                     TextButton(onClick = {
                         ask = null
                         val e = a.edit
-                        if (e == null) vm.go { deleteOne(a.o) } else vm.go { editOne(a.o, e) }
+                        if (e == null) vm.goUndoable("Reminder deleted") { deleteOne(a.o) } else vm.goUndoable("Changes saved") { editOne(a.o, e) }
                     }) { Text("Only this") }
                     TextButton(onClick = {
                         ask = null
                         val e = a.edit
                         if (e == null) {
-                            vm.go { splitFrom(a.o, null, null, true) }
+                            vm.goUndoable("Reminders deleted") { splitFrom(a.o, null, null, true) }
                         } else {
                             val moved = if (e.date != a.o.dueDate) e.date else null
-                            vm.go { splitFrom(a.o, e, moved, false) }
+                            vm.goUndoable("Changes saved") { splitFrom(a.o, e, moved, false) }
                         }
                     }) { Text("This and following") }
                 }
@@ -577,9 +603,18 @@ fun SettingsSheet(
     onTime: (Int, Int) -> Unit,
     onTheme: (Int) -> Unit,
     onTest: () -> Unit,
+    onExport: (Uri) -> Unit,
+    onImport: (Uri) -> Unit,
     onDismiss: () -> Unit
 ) {
     var timeDialog by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<Uri?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) onExport(uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) pendingImport = uri
+    }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val effective = if (settings.theme < 0 && Build.VERSION.SDK_INT < 31) 0 else settings.theme
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -635,8 +670,29 @@ fun SettingsSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = muted
             )
+            Text("Backup", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = { exportLauncher.launch("backup-${LocalDate.now()}.json") },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Export") }
+                OutlinedButton(
+                    onClick = { importLauncher.launch(arrayOf("*/*")) },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Import") }
+            }
+            Text("Import replaces all current data with the file's content.", style = MaterialTheme.typography.bodySmall, color = muted)
             OutlinedButton(onClick = onTest, modifier = Modifier.fillMaxWidth()) { Text("Send test notification (in 10 s)") }
         }
+    }
+    pendingImport?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingImport = null },
+            title = { Text("Replace all data?") },
+            text = { Text("Importing replaces every reminder currently in the app with the ones in the file.") },
+            confirmButton = { TextButton(onClick = { pendingImport = null; onImport(uri) }) { Text("Replace") } },
+            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } }
+        )
     }
     if (timeDialog) {
         val st = rememberTimePickerState(initialHour = settings.hour, initialMinute = settings.minute, is24Hour = false)
