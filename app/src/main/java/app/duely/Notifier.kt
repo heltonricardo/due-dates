@@ -153,6 +153,7 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val weekend = isWeekend(today)
         val list = pendingDue(dao.remindersNow(), dao.statesNow(), today).filter { !weekend || it.notifyWeekends }
         Notifier.showAll(applicationContext, list, today)
+        DueWidgetUpdater.update(applicationContext)
         val slot = inputData.getInt("slot", 0)
         if (slot >= 0) Notifier.schedule(applicationContext, 1 - slot)
         return Result.success()
@@ -181,6 +182,7 @@ class MarkDoneReceiver : BroadcastReceiver() {
                 Repo(Db.get(context).dao()).complete(o, true)
                 context.getSystemService(NotificationManager::class.java).cancel(intent.getIntExtra("nid", 0))
                 Notifier.refreshSummary(context)
+                DueWidgetUpdater.update(context)
             } finally {
                 pending.finish()
             }

@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -41,6 +43,12 @@ class VM(app: Application) : AndroidViewModel(app) {
     val events: SharedFlow<UndoEvent> = _events
     val reminders = dao.reminders().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val states = dao.states().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    init {
+        viewModelScope.launch {
+            combine(reminders, states) { _, _ -> Unit }.drop(1).collect { DueWidgetUpdater.update(app) }
+        }
+    }
 
     fun go(block: suspend Repo.() -> Unit) {
         viewModelScope.launch { repo.block() }

@@ -310,3 +310,15 @@ class Repo(private val dao: ReminderDao) {
         dao.clearFuture(o.groupId, o.period)
     }
 }
+
+fun widgetItems(reminders: List<Reminder>, states: List<OccurrenceState>, today: LocalDate): List<Occ> {
+    val current = YearMonth.from(today)
+    val end = current.plusMonths(1)
+    val out = mutableListOf<Occ>()
+    var m = earliestMonth(reminders, states, current)
+    while (m <= end) {
+        out += occurrencesFor(m, reminders, states).filter { it.completedAt == null }
+        m = m.plusMonths(1)
+    }
+    return out.sortedBy { it.dueDate }
+}
