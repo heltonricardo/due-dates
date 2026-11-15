@@ -85,7 +85,7 @@ Kotlin, Jetpack Compose with Material 3, Room, WorkManager, Jetpack Glance. Mini
 | `Notifier.kt` | Scheduling, notifications, grouping, Mark as done receiver |
 | `MainActivity.kt` | Activity and ViewModel (undo, backup, settings) |
 | `Ui.kt` | Screens, sheets and dialogs |
-| `Settings.kt` | Preferences and theme palettes |
+| `Settings.kt` | Preferences |
 | `Icons.kt` | Reminder icons and colors |
 | `Backup.kt` | JSON export and import |
 | `DueWidget.kt` | Home screen widget |
@@ -95,10 +95,6 @@ Kotlin, Jetpack Compose with Material 3, Room, WorkManager, Jetpack Glance. Mini
 1. Open the project folder in Android Studio.
 2. Set Gradle JDK to the embedded JetBrains Runtime (JDK 17 to 21). The Gradle version in use does not support JDK 25.
 3. Sync, connect a phone with USB debugging enabled, and run.
-
-To build a release APK, use Build > Generate Signed App Bundle / APK > APK, and create or choose a keystore. Always sign with the same keystore, otherwise updates will not install over the previous version. Before each release, raise `versionCode` and update `versionName` in `app/build.gradle.kts`, then attach the APK to a GitHub release.
-
-The app name is in `app/src/main/res/values/strings.xml` (`app_name`).
 
 ## Known limits
 
