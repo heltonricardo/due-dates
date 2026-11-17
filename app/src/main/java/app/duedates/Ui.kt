@@ -490,12 +490,15 @@ fun MonthPage(
 ) {
     val occ = remember(ym, reminders, states) { occurrencesFor(ym, reminders, states) }
     val overdue = occ.filter { it.overdue(today) }
-    val upcoming = occ.filter { it.completedAt == null && !it.overdue(today) }
+    val dueToday = occ.filter { it.completedAt == null && it.dueDate == today }
+    val upcoming = occ.filter { it.completedAt == null && it.dueDate.isAfter(today) }
     val done = occ.filter { it.completedAt != null }
     val primary = MaterialTheme.colorScheme.primary
+    val tertiary = MaterialTheme.colorScheme.tertiary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val summary = listOfNotNull(
         if (overdue.isNotEmpty()) "${overdue.size} overdue" else null,
+        if (dueToday.isNotEmpty()) "${dueToday.size} due today" else null,
         if (upcoming.isNotEmpty()) "${upcoming.size} upcoming" else null,
         if (done.isNotEmpty()) "${done.size} done" else null
     ).joinToString(" · ").ifEmpty { "Nothing scheduled" }
@@ -527,6 +530,7 @@ fun MonthPage(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             section("Overdue", overdue, Red, today, onToggle, onEdit, onDelete, onChangeDone)
+            section("Due today", dueToday, tertiary, today, onToggle, onEdit, onDelete, onChangeDone)
             section("Upcoming", upcoming, primary, today, onToggle, onEdit, onDelete, onChangeDone)
             section("Done", done, muted, today, onToggle, onEdit, onDelete, onChangeDone)
             if (footer.isNotEmpty()) {

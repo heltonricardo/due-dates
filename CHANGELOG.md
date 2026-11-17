@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2
+
+### Added
+- **Due today section:** the monthly view now has a separate "Due today" section, between "Overdue" and "Upcoming". It appears only in the current month.
+- The month header summary shows the "N due today" count.
+
+### Changed
+- "Upcoming" now lists only items due after today.
+
 ## 1.1
 
 ### Added
