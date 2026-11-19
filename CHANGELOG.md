@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3
+
+### Changed
+- The application ID is now `app.vercel.heton.duedates`. Android treats it as a new app: export a backup from the old version (Settings > Backup > Export) and import it in this one.
+
 ## 1.2
 
 ### Added

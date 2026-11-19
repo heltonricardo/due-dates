@@ -1,4 +1,4 @@
-package app.duedates
+package app.vercel.heton.duedates
 
 import android.app.Notification
 import android.app.NotificationChannel

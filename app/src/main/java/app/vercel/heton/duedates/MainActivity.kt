@@ -1,4 +1,4 @@
-package app.duedates
+package app.vercel.heton.duedates
 
 import android.Manifest
 import android.app.Application

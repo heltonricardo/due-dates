@@ -1,4 +1,4 @@
-package app.duedates
+package app.vercel.heton.duedates
 
 import java.time.DayOfWeek
 import java.time.LocalDate

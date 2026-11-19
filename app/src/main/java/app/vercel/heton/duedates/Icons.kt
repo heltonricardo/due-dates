@@ -1,4 +1,4 @@
-package app.duedates
+package app.vercel.heton.duedates
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance

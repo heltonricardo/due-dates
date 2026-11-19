@@ -1,2 +1,2 @@
--keep class app.duedates.** { *; }
+-keep class app.vercel.heton.duedates.** { *; }
 -keepclassmembers enum * { *; }

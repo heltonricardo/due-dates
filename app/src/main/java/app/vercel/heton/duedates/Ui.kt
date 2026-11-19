@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 
-package app.duedates
+package app.vercel.heton.duedates
 
 import android.net.Uri
 import android.os.Build
