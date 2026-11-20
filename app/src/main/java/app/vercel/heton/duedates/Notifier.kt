@@ -21,8 +21,6 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 object Notifier {
@@ -30,7 +28,6 @@ object Notifier {
     private const val GROUP = "pending"
     private const val SUMMARY_ID = 1
     private const val MAX_INDIVIDUAL = 3
-    private val fmt = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
     fun schedule(context: Context, slot: Int) {
         val zone = ZoneId.systemDefault()
@@ -53,7 +50,9 @@ object Notifier {
     private fun manager(context: Context): NotificationManager {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.deleteNotificationChannel("reminders")
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL, context.getString(R.string.channel_name), NotificationManager.IMPORTANCE_DEFAULT)
+        )
         return nm
     }
 
@@ -83,14 +82,18 @@ object Notifier {
             done,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val text = if (o.dueDate.isBefore(today)) "Overdue since ${o.dueDate.format(fmt)}" else "Due today"
+        val text = if (o.dueDate.isBefore(today)) {
+            context.getString(R.string.overdue_since, o.dueDate.format(dateFmt("MMMd")))
+        } else {
+            context.getString(R.string.due_today_notif)
+        }
         val b = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setContentTitle(o.title)
             .setContentText(text)
             .setContentIntent(openIntent(context))
             .setAutoCancel(true)
-            .addAction(0, "Mark as done", donePi)
+            .addAction(0, context.getString(R.string.mark_done), donePi)
         if (grouped) b.setGroup(GROUP).setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         nm.notify(nid, b.build())
     }
@@ -98,11 +101,11 @@ object Notifier {
     private fun summary(context: Context, titles: List<String>): Notification {
         val inbox = NotificationCompat.InboxStyle()
         titles.take(6).forEach { inbox.addLine(it) }
-        if (titles.size > 6) inbox.setSummaryText("+${titles.size - 6} more")
+        if (titles.size > 6) inbox.setSummaryText(context.getString(R.string.more_summary, titles.size - 6))
         return NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_notify)
-            .setContentTitle("${titles.size} pending reminders")
-            .setContentText("Tap to review")
+            .setContentTitle(context.resources.plural(R.plurals.pending_reminders, titles.size))
+            .setContentText(context.getString(R.string.tap_review))
             .setStyle(inbox)
             .setGroup(GROUP)
             .setGroupSummary(true)

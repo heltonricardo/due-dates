@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4
+
+### Added
+- **Portuguese (Brazil) translation:** the whole interface, the widget and the notifications are now available in English (US) and Portuguese (Brazil). The app follows the system language. On Android 13 and later, the language can also be set for this app only in the system settings (Settings > Apps > Due Dates > Language).
+
+### Changed
+- Dates and times follow the language and region of the device. The notification time picker uses the 12-hour or 24-hour format set in the system.
+
 ## 1.3
 
 ### Changed

@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Lembretes atrasados e próximos, com um atalho para marcá-los como concluídos.</string>
+
+    <string name="new_reminder">Novo lembrete</string>
+    <string name="edit_reminder">Editar lembrete</string>
+    <string name="undo">Desfazer</string>
+    <string name="marked_done">Marcado como concluído</string>
+    <string name="marked_pending">Marcado como pendente</string>
+    <string name="reminder_deleted">Lembrete excluído</string>
+    <string name="reminders_deleted">Lembretes excluídos</string>
+    <string name="changes_saved">Alterações salvas</string>
+    <string name="completion_changed">Data de conclusão alterada</string>
+    <string name="backup_saved">Backup salvo</string>
+    <string name="export_failed">Falha ao exportar</string>
+    <string name="backup_restored">Backup restaurado</string>
+    <string name="invalid_backup">Arquivo de backup inválido</string>
+
+    <string name="search">Buscar</string>
+    <string name="search_reminders">Buscar lembretes</string>
+    <string name="close_search">Fechar busca</string>
+    <string name="settings">Configurações</string>
+    <string name="overdue_previous">%d em atraso em meses anteriores</string>
+    <string name="previous_month">Mês anterior</string>
+    <string name="next_month">Próximo mês</string>
+
+    <string name="delete_which">Excluir quais lembretes?</string>
+    <string name="edit_which">Editar quais lembretes?</string>
+    <string name="repeat_only_following">As configurações de repetição só se aplicam a \"Este e seguintes\".</string>
+    <string name="only_this">Somente este</string>
+    <string name="this_and_following">Este e seguintes</string>
+    <string name="cancel">Cancelar</string>
+    <string name="ok">OK</string>
+    <string name="completion_date">Data de conclusão</string>
+
+    <string name="open_overview">Abrir resumo</string>
+    <string name="overview">Resumo</string>
+    <string name="nothing_scheduled">Nada agendado</string>
+    <string name="section_overdue">Em atraso</string>
+    <string name="section_due_today">Vence hoje</string>
+    <string name="section_upcoming">Próximos</string>
+    <string name="section_done">Concluídos</string>
+    <string name="footer_first">Nada antes deste mês.</string>
+    <string name="footer_open_ended">Lembretes recorrentes aparecem até 12 meses à frente.</string>
+    <string name="footer_last">Nada agendado depois deste mês.</string>
+    <string name="back_to">Voltar para %s</string>
+
+    <string name="due_done">Vence em %1$s · Concluído em %2$s</string>
+    <string name="adjusted">ajustada</string>
+    <string name="menu_edit">Editar</string>
+    <string name="menu_change_completion">Alterar data de conclusão</string>
+    <string name="menu_show_in_month">Mostrar no mês</string>
+    <string name="menu_delete">Excluir</string>
+
+    <string name="notification_time">Horário da notificação</string>
+    <string name="notifications_approx">As notificações são aproximadas. O Android pode atrasá-las por alguns minutos ou até horas para economizar bateria, então uma pode chegar depois deste horário.</string>
+    <string name="theme">Tema</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Escuro</string>
+    <string name="backup">Backup</string>
+    <string name="export">Exportar</string>
+    <string name="import_">Importar</string>
+    <string name="import_note">Importar substitui todos os dados atuais pelo conteúdo do arquivo.</string>
+    <string name="replace_title">Substituir todos os dados?</string>
+    <string name="replace_text">Importar substitui todos os lembretes atuais do app pelos do arquivo.</string>
+    <string name="replace">Substituir</string>
+
+    <string name="upcoming_dates">Próximas datas</string>
+    <string name="adjusted_note">Datas em vermelho foram movidas para o último dia válido.</string>
+    <string name="continues">Continua indefinidamente.</string>
+    <string name="more_dates">+%d mais</string>
+
+    <string name="title">Título</string>
+    <string name="note_optional">Observação (opcional)</string>
+    <string name="freq_once">Uma vez</string>
+    <string name="freq_daily">Diária</string>
+    <string name="freq_weekly">Semanal</string>
+    <string name="freq_monthly">Mensal</string>
+    <string name="freq_yearly">Anual</string>
+    <string name="every">A cada</string>
+    <string name="pick_day">Escolha pelo menos um dia.</string>
+    <string name="forever">Para sempre</string>
+    <string name="n_times">N vezes</string>
+    <string name="repetitions">Repetições</string>
+    <string name="repetitions_from">Repetições a partir desta</string>
+    <string name="day_of_month">Dia do mês</string>
+    <string name="business_day">Dia útil</string>
+    <string name="last_business_day">Último dia útil</string>
+    <string name="business_day_number">Número do dia útil (1–23)</string>
+    <string name="business_day_support">Conta de segunda a sexta. Feriados não são considerados.</string>
+    <string name="starting_month">Mês inicial: %s</string>
+    <string name="first_due">Primeiro vencimento: %s</string>
+    <string name="due_on">Vencimento: %s</string>
+    <string name="notify_weekends">Notificar nos fins de semana</string>
+    <string name="notify_weekends_hint">Desligado: pula sábado e domingo e notifica na segunda.</string>
+    <string name="icon">Ícone</string>
+    <string name="color">Cor</string>
+    <string name="save">Salvar</string>
+
+    <string name="type_to_search">Digite para buscar em títulos e observações.</string>
+    <string name="no_results">Nenhum resultado.</string>
+
+    <string name="all_caught_up">Tudo em dia</string>
+
+    <string name="channel_name">Lembretes</string>
+    <string name="overdue_since">Em atraso desde %s</string>
+    <string name="due_today_notif">Vence hoje</string>
+    <string name="mark_done">Marcar como concluído</string>
+    <string name="tap_review">Toque para revisar</string>
+    <string name="more_summary">+%d mais</string>
+
+    <string-array name="weekday_initials">
+        <item>S</item>
+        <item>T</item>
+        <item>Q</item>
+        <item>Q</item>
+        <item>S</item>
+        <item>S</item>
+        <item>D</item>
+    </string-array>
+
+    <plurals name="count_overdue">
+        <item quantity="one">%d em atraso</item>
+        <item quantity="many">%d em atraso</item>
+        <item quantity="other">%d em atraso</item>
+    </plurals>
+    <plurals name="count_due_today">
+        <item quantity="one">%d vence hoje</item>
+        <item quantity="many">%d vencem hoje</item>
+        <item quantity="other">%d vencem hoje</item>
+    </plurals>
+    <plurals name="count_upcoming">
+        <item quantity="one">%d próximo</item>
+        <item quantity="many">%d próximos</item>
+        <item quantity="other">%d próximos</item>
+    </plurals>
+    <plurals name="count_done">
+        <item quantity="one">%d concluído</item>
+        <item quantity="many">%d concluídos</item>
+        <item quantity="other">%d concluídos</item>
+    </plurals>
+    <plurals name="days_overdue">
+        <item quantity="one">%d dia em atraso</item>
+        <item quantity="many">%d dias em atraso</item>
+        <item quantity="other">%d dias em atraso</item>
+    </plurals>
+    <plurals name="results_count">
+        <item quantity="one">%d resultado</item>
+        <item quantity="many">%d resultados</item>
+        <item quantity="other">%d resultados</item>
+    </plurals>
+    <plurals name="more_adjusted">
+        <item quantity="one">Mais %d data ajustada adiante.</item>
+        <item quantity="many">Mais %d datas ajustadas adiante.</item>
+        <item quantity="other">Mais %d datas ajustadas adiante.</item>
+    </plurals>
+    <plurals name="pending_reminders">
+        <item quantity="one">%d lembrete pendente</item>
+        <item quantity="many">%d lembretes pendentes</item>
+        <item quantity="other">%d lembretes pendentes</item>
+    </plurals>
+    <plurals name="unit_day">
+        <item quantity="one">dia</item>
+        <item quantity="many">dias</item>
+        <item quantity="other">dias</item>
+    </plurals>
+    <plurals name="unit_week">
+        <item quantity="one">semana</item>
+        <item quantity="many">semanas</item>
+        <item quantity="other">semanas</item>
+    </plurals>
+    <plurals name="unit_month">
+        <item quantity="one">mês</item>
+        <item quantity="many">meses</item>
+        <item quantity="other">meses</item>
+    </plurals>
+    <plurals name="unit_year">
+        <item quantity="one">ano</item>
+        <item quantity="many">anos</item>
+        <item quantity="other">anos</item>
+    </plurals>
+</resources>

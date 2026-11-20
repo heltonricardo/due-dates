@@ -2,8 +2,10 @@
 
 package app.vercel.heton.duedates
 
+import android.content.res.Resources
 import android.net.Uri
 import android.os.Build
+import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -100,6 +102,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -112,17 +115,10 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import java.text.Normalizer
 import java.time.temporal.ChronoUnit
-import java.util.Locale
 
 private val Red = Color(0xFFE5484D)
-private val shortFmt = DateTimeFormatter.ofPattern("MMM d", Locale.US)
-private val fullFmt = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
-private val monthFmt = DateTimeFormatter.ofPattern("MMMM", Locale.US)
-private val monthYearFmt = DateTimeFormatter.ofPattern("MMM yyyy", Locale.US)
-private val timeFmt = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
 data class Ask(val o: Occ, val edit: EditData?)
 
@@ -136,15 +132,15 @@ fun defaultCount(f: Freq): Int = when (f) {
     Freq.ONCE -> 1
 }
 
-private fun unitLabel(f: Freq, n: Int): String {
-    val base = when (f) {
-        Freq.DAILY -> "day"
-        Freq.WEEKLY -> "week"
-        Freq.MONTHLY -> "month"
-        Freq.YEARLY -> "year"
-        Freq.ONCE -> ""
+private fun unitLabel(res: Resources, f: Freq, n: Int): String {
+    val id = when (f) {
+        Freq.DAILY -> R.plurals.unit_day
+        Freq.WEEKLY -> R.plurals.unit_week
+        Freq.MONTHLY -> R.plurals.unit_month
+        Freq.YEARLY -> R.plurals.unit_year
+        Freq.ONCE -> return ""
     }
-    return if (n == 1) base else base + "s"
+    return res.getQuantityString(id, n)
 }
 
 @Composable
@@ -195,14 +191,31 @@ fun Root(vm: VM) {
     var query by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val sUndo = stringResource(R.string.undo)
+    val sMarkedDone = stringResource(R.string.marked_done)
+    val sMarkedPending = stringResource(R.string.marked_pending)
+    val sDeleted = stringResource(R.string.reminder_deleted)
+    val sDeletedMany = stringResource(R.string.reminders_deleted)
+    val sSaved = stringResource(R.string.changes_saved)
+    val sCompletion = stringResource(R.string.completion_changed)
+    val sBackupSaved = stringResource(R.string.backup_saved)
+    val sExportFailed = stringResource(R.string.export_failed)
+    val sBackupRestored = stringResource(R.string.backup_restored)
+    val sInvalidBackup = stringResource(R.string.invalid_backup)
     LaunchedEffect(Unit) {
         vm.events.collect { e ->
             snackbar.currentSnackbarData?.dismiss()
             scope.launch {
-                val r = snackbar.showSnackbar(e.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+                val r = snackbar.showSnackbar(e.message, actionLabel = sUndo, duration = SnackbarDuration.Short)
                 if (r == SnackbarResult.ActionPerformed) vm.restore(e)
             }
         }
+    }
+    val toggle: (Occ, Boolean) -> Unit = { o, done ->
+        vm.goUndoable(if (done) sMarkedDone else sMarkedPending) { complete(o, done) }
+    }
+    val delete: (Occ) -> Unit = { o ->
+        if (o.once) vm.goUndoable(sDeleted) { deleteOne(o) } else ask = Ask(o, null)
     }
 
     Scaffold(
@@ -211,7 +224,7 @@ fun Root(vm: VM) {
             ExtendedFloatingActionButton(
                 onClick = { editing = null; formOpen = true },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("New reminder") }
+                text = { Text(stringResource(R.string.new_reminder)) }
             )
         }
     ) { pad ->
@@ -246,14 +259,14 @@ fun Root(vm: VM) {
                         OutlinedTextField(
                             value = query,
                             onValueChange = { query = it },
-                            placeholder = { Text("Search reminders") },
+                            placeholder = { Text(stringResource(R.string.search_reminders)) },
                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                             singleLine = true,
                             shape = RoundedCornerShape(28.dp),
                             modifier = Modifier.weight(1f).focusRequester(focusRequester)
                         )
                         IconButton(onClick = { searching = false; query = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close search")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_search))
                         }
                     }
                 } else {
@@ -270,10 +283,10 @@ fun Root(vm: VM) {
                         )
                         Row {
                             IconButton(onClick = { searching = true }) {
-                                Icon(Icons.Default.Search, contentDescription = "Search")
+                                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
                             }
                             IconButton(onClick = { showSettings = true }) {
-                                Icon(Icons.Default.Settings, contentDescription = "Settings")
+                                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
                             }
                         }
                     }
@@ -287,9 +300,9 @@ fun Root(vm: VM) {
                             reminders = reminders,
                             states = states,
                             today = today,
-                            onToggle = { o, done -> vm.goUndoable(if (done) "Marked as done" else "Marked as pending") { complete(o, done) } },
+                            onToggle = toggle,
                             onEdit = { editing = it; formOpen = true },
-                            onDelete = { o -> if (o.once) vm.goUndoable("Reminder deleted") { deleteOne(o) } else ask = Ask(o, null) },
+                            onDelete = delete,
                             onChangeDone = { redating = it },
                             onGo = { o ->
                                 goTo = YearMonth.from(o.dueDate)
@@ -310,7 +323,7 @@ fun Root(vm: VM) {
                         colors = CardDefaults.cardColors(containerColor = Red.copy(alpha = 0.16f))
                     ) {
                         Text(
-                            "${previous.first} overdue in previous months",
+                            stringResource(R.string.overdue_previous, previous.first),
                             Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                             color = Red,
                             fontWeight = FontWeight.Medium
@@ -330,9 +343,9 @@ fun Root(vm: VM) {
                             today = today,
                             onOpenOverview = { showOverview = true },
                             onToday = { scope.launch { pager.animateScrollToPage(curPage) } },
-                            onToggle = { o, done -> vm.goUndoable(if (done) "Marked as done" else "Marked as pending") { complete(o, done) } },
+                            onToggle = toggle,
                             onEdit = { editing = it; formOpen = true },
-                            onDelete = { o -> if (o.once) vm.goUndoable("Reminder deleted") { deleteOne(o) } else ask = Ask(o, null) },
+                            onDelete = delete,
                             onChangeDone = { redating = it }
                         )
                     }
@@ -340,12 +353,22 @@ fun Root(vm: VM) {
                         FilledTonalIconButton(
                             onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
                             enabled = pager.currentPage > 0
-                        ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month") }
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = stringResource(R.string.previous_month)
+                            )
+                        }
                         Spacer(Modifier.width(8.dp))
                         FilledTonalIconButton(
                             onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
                             enabled = pager.currentPage < total - 1
-                        ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month") }
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = stringResource(R.string.next_month)
+                            )
+                        }
                     }
                 }
                 }
@@ -375,11 +398,11 @@ fun Root(vm: VM) {
             onDark = { vm.setDark(it) },
             onExport = { uri ->
                 showSettings = false
-                vm.exportTo(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) "Backup saved" else "Export failed") } }
+                vm.exportTo(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) sBackupSaved else sExportFailed) } }
             },
             onImport = { uri ->
                 showSettings = false
-                vm.importFrom(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) "Backup restored" else "Invalid backup file") } }
+                vm.importFrom(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) sBackupRestored else sInvalidBackup) } }
             },
             onDismiss = { showSettings = false }
         )
@@ -397,7 +420,7 @@ fun Root(vm: VM) {
             },
             onEdit = { o, e ->
                 formOpen = false
-                if (o.once) vm.goUndoable("Changes saved") { editOne(o, e) } else ask = Ask(o, e)
+                if (o.once) vm.goUndoable(sSaved) { editOne(o, e) } else ask = Ask(o, e)
             }
         )
     }
@@ -408,22 +431,21 @@ fun Root(vm: VM) {
             onDismiss = { redating = null },
             onConfirm = { d ->
                 redating = null
-                vm.goUndoable("Completion date changed") { setCompletion(o, d) }
+                vm.goUndoable(sCompletion) { setCompletion(o, d) }
             }
         )
     }
 
     ask?.let { a ->
-        val verb = if (a.edit == null) "Delete" else "Edit"
         AlertDialog(
             onDismissRequest = { ask = null },
-            title = { Text("$verb which reminders?") },
+            title = { Text(stringResource(if (a.edit == null) R.string.delete_which else R.string.edit_which)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(a.o.title)
                     if (a.edit?.rule != null) {
                         Text(
-                            "Repeat settings only apply to \"This and following\".",
+                            stringResource(R.string.repeat_only_following),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -435,21 +457,21 @@ fun Root(vm: VM) {
                     TextButton(onClick = {
                         ask = null
                         val e = a.edit
-                        if (e == null) vm.goUndoable("Reminder deleted") { deleteOne(a.o) } else vm.goUndoable("Changes saved") { editOne(a.o, e) }
-                    }) { Text("Only this") }
+                        if (e == null) vm.goUndoable(sDeleted) { deleteOne(a.o) } else vm.goUndoable(sSaved) { editOne(a.o, e) }
+                    }) { Text(stringResource(R.string.only_this)) }
                     TextButton(onClick = {
                         ask = null
                         val e = a.edit
                         if (e == null) {
-                            vm.goUndoable("Reminders deleted") { splitFrom(a.o, null, null, true) }
+                            vm.goUndoable(sDeletedMany) { splitFrom(a.o, null, null, true) }
                         } else {
                             val moved = if (e.date != a.o.dueDate) e.date else null
-                            vm.goUndoable("Changes saved") { splitFrom(a.o, e, moved, false) }
+                            vm.goUndoable(sSaved) { splitFrom(a.o, e, moved, false) }
                         }
-                    }) { Text("This and following") }
+                    }) { Text(stringResource(R.string.this_and_following)) }
                 }
             },
-            dismissButton = { TextButton(onClick = { ask = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { ask = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }
@@ -463,11 +485,14 @@ fun CompletionDialog(o: Occ, onDismiss: () -> Unit, onConfirm: (LocalDate) -> Un
         confirmButton = {
             TextButton(onClick = {
                 st.selectedDateMillis?.let { onConfirm(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }
-            }) { Text("OK") }
+            }) { Text(stringResource(R.string.ok)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     ) {
-        DatePicker(st, title = { Text("Completion date", Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp)) })
+        DatePicker(
+            st,
+            title = { Text(stringResource(R.string.completion_date), Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp)) }
+        )
     }
 }
 
@@ -488,6 +513,7 @@ fun MonthPage(
     onDelete: (Occ) -> Unit,
     onChangeDone: (Occ) -> Unit
 ) {
+    val res = LocalContext.current.resources
     val occ = remember(ym, reminders, states) { occurrencesFor(ym, reminders, states) }
     val overdue = occ.filter { it.overdue(today) }
     val dueToday = occ.filter { it.completedAt == null && it.dueDate == today }
@@ -496,24 +522,37 @@ fun MonthPage(
     val primary = MaterialTheme.colorScheme.primary
     val tertiary = MaterialTheme.colorScheme.tertiary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val nothing = stringResource(R.string.nothing_scheduled)
     val summary = listOfNotNull(
-        if (overdue.isNotEmpty()) "${overdue.size} overdue" else null,
-        if (dueToday.isNotEmpty()) "${dueToday.size} due today" else null,
-        if (upcoming.isNotEmpty()) "${upcoming.size} upcoming" else null,
-        if (done.isNotEmpty()) "${done.size} done" else null
-    ).joinToString(" · ").ifEmpty { "Nothing scheduled" }
+        if (overdue.isNotEmpty()) res.plural(R.plurals.count_overdue, overdue.size) else null,
+        if (dueToday.isNotEmpty()) res.plural(R.plurals.count_due_today, dueToday.size) else null,
+        if (upcoming.isNotEmpty()) res.plural(R.plurals.count_upcoming, upcoming.size) else null,
+        if (done.isNotEmpty()) res.plural(R.plurals.count_done, done.size) else null
+    ).joinToString(" · ").ifEmpty { nothing }
+    val sFirst = stringResource(R.string.footer_first)
+    val sOpenEnded = stringResource(R.string.footer_open_ended)
+    val sLast = stringResource(R.string.footer_last)
     val footer = listOfNotNull(
-        if (isFirst) "Nothing before this month." else null,
-        if (isLast) (if (openEnded) "Recurring reminders show up to 12 months ahead." else "Nothing scheduled after this month.") else null
+        if (isFirst) sFirst else null,
+        if (isLast) (if (openEnded) sOpenEnded else sLast) else null
     ).joinToString(" ")
+    val sOverdue = stringResource(R.string.section_overdue)
+    val sDueToday = stringResource(R.string.section_due_today)
+    val sUpcoming = stringResource(R.string.section_upcoming)
+    val sDone = stringResource(R.string.section_done)
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(start = 24.dp, end = 128.dp, top = 12.dp, bottom = 8.dp)) {
             Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenOverview)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${ym.year}", style = MaterialTheme.typography.labelLarge, color = muted)
-                    Icon(Icons.Default.ExpandMore, contentDescription = "Open overview", tint = muted, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.ExpandMore,
+                        contentDescription = stringResource(R.string.open_overview),
+                        tint = muted,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-                Text(ym.format(monthFmt), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Medium)
+                Text(ym.format(dateFmt("MMMM")).cap(), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Medium)
             }
             Text(
                 summary,
@@ -521,7 +560,9 @@ fun MonthPage(
                 color = if (overdue.isNotEmpty()) Red else muted
             )
             if (ym != cur) {
-                TextButton(onClick = onToday, contentPadding = PaddingValues(0.dp)) { Text("Back to ${cur.format(monthFmt)}") }
+                TextButton(onClick = onToday, contentPadding = PaddingValues(0.dp)) {
+                    Text(stringResource(R.string.back_to, cur.format(dateFmt("MMMM"))))
+                }
             }
         }
         LazyColumn(
@@ -529,10 +570,10 @@ fun MonthPage(
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 120.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            section("Overdue", overdue, Red, today, onToggle, onEdit, onDelete, onChangeDone)
-            section("Due today", dueToday, tertiary, today, onToggle, onEdit, onDelete, onChangeDone)
-            section("Upcoming", upcoming, primary, today, onToggle, onEdit, onDelete, onChangeDone)
-            section("Done", done, muted, today, onToggle, onEdit, onDelete, onChangeDone)
+            section(sOverdue, overdue, Red, today, onToggle, onEdit, onDelete, onChangeDone)
+            section(sDueToday, dueToday, tertiary, today, onToggle, onEdit, onDelete, onChangeDone)
+            section(sUpcoming, upcoming, primary, today, onToggle, onEdit, onDelete, onChangeDone)
+            section(sDone, done, muted, today, onToggle, onEdit, onDelete, onChangeDone)
             if (footer.isNotEmpty()) {
                 item(key = "footer") {
                     Text(
@@ -581,6 +622,7 @@ fun OccCard(
     onChangeDone: (Occ) -> Unit,
     onGo: ((Occ) -> Unit)? = null
 ) {
+    val res = LocalContext.current.resources
     var menu by remember { mutableStateOf(false) }
     val done = o.completedAt != null
     val late = o.overdue(today)
@@ -591,18 +633,22 @@ fun OccCard(
         done -> MaterialTheme.colorScheme.surfaceContainerLow
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    val sub = buildString {
+    val short = dateFmt("MMMd")
+    val sub = run {
+        val parts = mutableListOf<String>()
         if (done) {
-            append("Due ${o.dueDate.format(shortFmt)} · Done ${o.completedAt?.toLocalDate()?.format(shortFmt)}")
+            parts += res.getString(
+                R.string.due_done,
+                o.dueDate.format(short),
+                o.completedAt?.toLocalDate()?.format(short) ?: ""
+            )
         } else {
-            append(o.dueDate.format(shortFmt))
-            if (late) {
-                val days = ChronoUnit.DAYS.between(o.dueDate, today)
-                append(" · $days ${if (days == 1L) "day" else "days"} overdue")
-            }
-            if (o.adjusted) append(" · adjusted")
+            parts += o.dueDate.format(short)
+            if (late) parts += res.plural(R.plurals.days_overdue, ChronoUnit.DAYS.between(o.dueDate, today).toInt())
+            if (o.adjusted) parts += res.getString(R.string.adjusted)
         }
-        if (!o.note.isNullOrBlank()) append(" · ${o.note}")
+        if (!o.note.isNullOrBlank()) parts += o.note
+        parts.joinToString(" · ")
     }
     Box {
         Card(
@@ -635,10 +681,20 @@ fun OccCard(
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            if (!done) DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit(o) })
-            if (done) DropdownMenuItem(text = { Text("Change completion date") }, onClick = { menu = false; onChangeDone(o) })
-            if (onGo != null) DropdownMenuItem(text = { Text("Show in month") }, onClick = { menu = false; onGo(o) })
-            DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete(o) })
+            if (!done) DropdownMenuItem(text = { Text(stringResource(R.string.menu_edit)) }, onClick = { menu = false; onEdit(o) })
+            if (done) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_change_completion)) },
+                    onClick = { menu = false; onChangeDone(o) }
+                )
+            }
+            if (onGo != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_show_in_month)) },
+                    onClick = { menu = false; onGo(o) }
+                )
+            }
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_delete)) }, onClick = { menu = false; onDelete(o) })
         }
     }
 }
@@ -678,7 +734,11 @@ fun OverviewSheet(
     val startIndex = rows.indexOfFirst { it is MonthStat && it.ym == cur }.let { (it - 2).coerceAtLeast(0) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("Overview", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.headlineSmall)
+        Text(
+            stringResource(R.string.overview),
+            Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.headlineSmall
+        )
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 32.dp),
@@ -702,6 +762,7 @@ fun OverviewSheet(
 
 @Composable
 private fun MonthRow(stat: MonthStat, current: Boolean, onClick: () -> Unit) {
+    val res = LocalContext.current.resources
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Card(
         onClick = onClick,
@@ -716,14 +777,14 @@ private fun MonthRow(stat: MonthStat, current: Boolean, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(stat.ym.format(monthFmt), style = MaterialTheme.typography.titleMedium)
+            Text(stat.ym.format(dateFmt("MMMM")).cap(), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (stat.overdue + stat.upcoming + stat.done == 0) {
                     Text("—", color = muted)
                 }
-                if (stat.overdue > 0) Pill("${stat.overdue} overdue", Red)
-                if (stat.upcoming > 0) Pill("${stat.upcoming} upcoming", MaterialTheme.colorScheme.primary)
-                if (stat.done > 0) Pill("${stat.done} done", muted)
+                if (stat.overdue > 0) Pill(res.plural(R.plurals.count_overdue, stat.overdue), Red)
+                if (stat.upcoming > 0) Pill(res.plural(R.plurals.count_upcoming, stat.upcoming), MaterialTheme.colorScheme.primary)
+                if (stat.done > 0) Pill(res.plural(R.plurals.count_done, stat.done), muted)
             }
         }
     }
@@ -745,6 +806,7 @@ fun SettingsSheet(
     onImport: (Uri) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     var timeDialog by remember { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<Uri?>(null) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -763,8 +825,8 @@ fun SettingsSheet(
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text("Settings", style = MaterialTheme.typography.headlineSmall)
-            Text("Notification time", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.notification_time), style = MaterialTheme.typography.labelLarge)
             Card(
                 onClick = { timeDialog = true },
                 modifier = Modifier.fillMaxWidth(),
@@ -772,58 +834,69 @@ fun SettingsSheet(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(LocalTime.of(settings.hour, settings.minute).format(timeFmt), style = MaterialTheme.typography.headlineMedium)
                     Text(
-                        "Notifications are approximate. Android may delay them by a few minutes or even hours to save battery, so one can arrive after this time.",
+                        LocalTime.of(settings.hour, settings.minute).format(dateFmt("jm")),
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Text(
+                        stringResource(R.string.notifications_approx),
                         style = MaterialTheme.typography.bodySmall,
                         color = muted
                     )
                 }
             }
-            Text("Theme", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.theme), style = MaterialTheme.typography.labelLarge)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = !settings.dark,
                     onClick = { onDark(false) },
                     shape = SegmentedButtonDefaults.itemShape(0, 2),
                     icon = {}
-                ) { Text("Light") }
+                ) { Text(stringResource(R.string.theme_light)) }
                 SegmentedButton(
                     selected = settings.dark,
                     onClick = { onDark(true) },
                     shape = SegmentedButtonDefaults.itemShape(1, 2),
                     icon = {}
-                ) { Text("Dark") }
+                ) { Text(stringResource(R.string.theme_dark)) }
             }
-            Text("Backup", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.backup), style = MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
                     onClick = { exportLauncher.launch("backup-${LocalDate.now()}.json") },
                     modifier = Modifier.weight(1f)
-                ) { Text("Export") }
+                ) { Text(stringResource(R.string.export)) }
                 OutlinedButton(
                     onClick = { importLauncher.launch(arrayOf("*/*")) },
                     modifier = Modifier.weight(1f)
-                ) { Text("Import") }
+                ) { Text(stringResource(R.string.import_)) }
             }
-            Text("Import replaces all current data with the file's content.", style = MaterialTheme.typography.bodySmall, color = muted)
+            Text(stringResource(R.string.import_note), style = MaterialTheme.typography.bodySmall, color = muted)
         }
     }
     pendingImport?.let { uri ->
         AlertDialog(
             onDismissRequest = { pendingImport = null },
-            title = { Text("Replace all data?") },
-            text = { Text("Importing replaces every reminder currently in the app with the ones in the file.") },
-            confirmButton = { TextButton(onClick = { pendingImport = null; onImport(uri) }) { Text("Replace") } },
-            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } }
+            title = { Text(stringResource(R.string.replace_title)) },
+            text = { Text(stringResource(R.string.replace_text)) },
+            confirmButton = {
+                TextButton(onClick = { pendingImport = null; onImport(uri) }) { Text(stringResource(R.string.replace)) }
+            },
+            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (timeDialog) {
-        val st = rememberTimePickerState(initialHour = settings.hour, initialMinute = settings.minute, is24Hour = false)
+        val st = rememberTimePickerState(
+            initialHour = settings.hour,
+            initialMinute = settings.minute,
+            is24Hour = DateFormat.is24HourFormat(context)
+        )
         AlertDialog(
             onDismissRequest = { timeDialog = false },
-            confirmButton = { TextButton(onClick = { onTime(st.hour, st.minute); timeDialog = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { timeDialog = false }) { Text("Cancel") } },
+            confirmButton = {
+                TextButton(onClick = { onTime(st.hour, st.minute); timeDialog = false }) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = { TextButton(onClick = { timeDialog = false }) { Text(stringResource(R.string.cancel)) } },
             text = { TimePicker(state = st) }
         )
     }
@@ -831,25 +904,26 @@ fun SettingsSheet(
 
 @Composable
 private fun DatePreview(dates: List<Pair<LocalDate, Boolean>>, first: LocalDate, openEnded: Boolean) {
+    val res = LocalContext.current.resources
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val shown = dates.take(12)
     val hidden = dates.drop(12)
     val hiddenAdjusted = hidden.count { it.second }
     val notes = listOfNotNull(
-        if (shown.any { it.second }) "Red dates were moved to the last valid day." else null,
-        if (hiddenAdjusted > 0) "$hiddenAdjusted more adjusted dates further ahead." else null,
-        if (openEnded) "Continues indefinitely." else null
+        if (shown.any { it.second }) res.getString(R.string.adjusted_note) else null,
+        if (hiddenAdjusted > 0) res.plural(R.plurals.more_adjusted, hiddenAdjusted) else null,
+        if (openEnded) res.getString(R.string.continues) else null
     )
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("Upcoming dates", style = MaterialTheme.typography.labelLarge, color = muted)
+        Text(stringResource(R.string.upcoming_dates), style = MaterialTheme.typography.labelLarge, color = muted)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             shown.forEach { (d, adjusted) ->
-                DateChip(d.format(if (d.year == first.year) shortFmt else fullFmt), adjusted, false)
+                DateChip(d.format(dateFmt(if (d.year == first.year) "MMMd" else "yMMMd")), adjusted, false)
             }
-            if (hidden.isNotEmpty()) DateChip("+${hidden.size} more", false, true)
+            if (hidden.isNotEmpty()) DateChip(stringResource(R.string.more_dates, hidden.size), false, true)
         }
         notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
     }
@@ -878,6 +952,7 @@ fun FormSheet(
     onCreate: (NewReminder) -> Unit,
     onEdit: (Occ, EditData) -> Unit
 ) {
+    val res = LocalContext.current.resources
     val recurring = editing == null || rule != null
     var title by remember { mutableStateOf(editing?.title ?: "") }
     var note by remember { mutableStateOf(editing?.note ?: "") }
@@ -911,12 +986,13 @@ fun FormSheet(
                 (freq != Freq.MONTHLY || !businessMode || business != 0)
             ))
     val accent = colorFor(color)
-    val frequencies = (if (editing == null) listOf(Freq.ONCE to "Once") else emptyList()) + listOf(
-        Freq.DAILY to "Daily",
-        Freq.WEEKLY to "Weekly",
-        Freq.MONTHLY to "Monthly",
-        Freq.YEARLY to "Yearly"
+    val frequencies = (if (editing == null) listOf(Freq.ONCE to stringResource(R.string.freq_once)) else emptyList()) + listOf(
+        Freq.DAILY to stringResource(R.string.freq_daily),
+        Freq.WEEKLY to stringResource(R.string.freq_weekly),
+        Freq.MONTHLY to stringResource(R.string.freq_monthly),
+        Freq.YEARLY to stringResource(R.string.freq_yearly)
     )
+    val initials = stringArrayResource(R.array.weekday_initials)
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
         confirmValueChange = { it != SheetValue.Hidden }
@@ -938,15 +1014,26 @@ fun FormSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                if (editing == null) "New reminder" else "Edit reminder",
+                stringResource(if (editing == null) R.string.new_reminder else R.string.edit_reminder),
                 style = MaterialTheme.typography.headlineSmall
             )
-            OutlinedTextField(title, { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                title,
+                { title = it },
+                label = { Text(stringResource(R.string.title)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                note,
+                { note = it },
+                label = { Text(stringResource(R.string.note_optional)) },
+                modifier = Modifier.fillMaxWidth()
+            )
             if (recurring) {
                 if (editing != null) {
                     Text(
-                        "Repeat settings only apply to \"This and following\".",
+                        stringResource(R.string.repeat_only_following),
                         style = MaterialTheme.typography.bodySmall,
                         color = muted
                     )
@@ -969,7 +1056,7 @@ fun FormSheet(
                 }
                 if (freq != Freq.ONCE) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Every", style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.every), style = MaterialTheme.typography.bodyLarge)
                         OutlinedTextField(
                             everyText,
                             { everyText = it.filter(Char::isDigit).take(3) },
@@ -978,11 +1065,11 @@ fun FormSheet(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.width(96.dp)
                         )
-                        Text(unitLabel(freq, every), style = MaterialTheme.typography.bodyLarge)
+                        Text(unitLabel(res, freq, every), style = MaterialTheme.typography.bodyLarge)
                     }
                     if (freq == Freq.WEEKLY) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            listOf("M", "T", "W", "T", "F", "S", "S").forEachIndexed { i, label ->
+                            initials.forEachIndexed { i, label ->
                                 val on = (weekdays and (1 shl i)) != 0
                                 Box(
                                     Modifier.size(40.dp)
@@ -1000,7 +1087,7 @@ fun FormSheet(
                             }
                         }
                         if (weekdays == 0) {
-                            Text("Pick at least one day.", style = MaterialTheme.typography.bodySmall, color = Red)
+                            Text(stringResource(R.string.pick_day), style = MaterialTheme.typography.bodySmall, color = Red)
                         }
                     }
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -1009,7 +1096,7 @@ fun FormSheet(
                             onClick = { limited = false },
                             shape = SegmentedButtonDefaults.itemShape(0, 2),
                             icon = {}
-                        ) { Text("Forever", maxLines = 1) }
+                        ) { Text(stringResource(R.string.forever), maxLines = 1) }
                         SegmentedButton(
                             selected = limited,
                             onClick = {
@@ -1018,13 +1105,15 @@ fun FormSheet(
                             },
                             shape = SegmentedButtonDefaults.itemShape(1, 2),
                             icon = {}
-                        ) { Text("N times", maxLines = 1) }
+                        ) { Text(stringResource(R.string.n_times), maxLines = 1) }
                     }
                     if (limited) {
                         OutlinedTextField(
                             countText,
                             { countText = it.filter(Char::isDigit).take(4) },
-                            label = { Text(if (editing == null) "Repetitions" else "Repetitions from this one") },
+                            label = {
+                                Text(stringResource(if (editing == null) R.string.repetitions else R.string.repetitions_from))
+                            },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
@@ -1038,17 +1127,17 @@ fun FormSheet(
                             onClick = { businessMode = false },
                             shape = SegmentedButtonDefaults.itemShape(0, 2),
                             icon = {}
-                        ) { Text("Day of month", maxLines = 1) }
+                        ) { Text(stringResource(R.string.day_of_month), maxLines = 1) }
                         SegmentedButton(
                             selected = businessMode,
                             onClick = { businessMode = true },
                             shape = SegmentedButtonDefaults.itemShape(1, 2),
                             icon = {}
-                        ) { Text("Business day", maxLines = 1) }
+                        ) { Text(stringResource(R.string.business_day), maxLines = 1) }
                     }
                     if (businessMode) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Last business day", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                            Text(stringResource(R.string.last_business_day), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                             Switch(checked = lastBusiness, onCheckedChange = { lastBusiness = it })
                         }
                     }
@@ -1059,8 +1148,8 @@ fun FormSheet(
                                 val digits = v.filter(Char::isDigit).take(2)
                                 businessText = if ((digits.toIntOrNull() ?: 0) > 23) "23" else digits
                             },
-                            label = { Text("Business day number (1–23)") },
-                            supportingText = { Text("Counts Monday to Friday. Holidays are not considered.") },
+                            label = { Text(stringResource(R.string.business_day_number)) },
+                            supportingText = { Text(stringResource(R.string.business_day_support)) },
                             singleLine = true,
                             isError = business == 0,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1071,19 +1160,23 @@ fun FormSheet(
             }
             OutlinedButton(onClick = { picker = true }, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    if (editing == null && freq == Freq.MONTHLY && businessMode) "Starting month: ${date.format(monthYearFmt)}"
-                    else if (editing == null && freq != Freq.ONCE) "First due: ${date.format(fullFmt)}"
-                    else "Due: ${date.format(fullFmt)}"
+                    if (editing == null && freq == Freq.MONTHLY && businessMode) {
+                        stringResource(R.string.starting_month, date.format(dateFmt("yMMM")))
+                    } else if (editing == null && freq != Freq.ONCE) {
+                        stringResource(R.string.first_due, date.format(dateFmt("yMMMd")))
+                    } else {
+                        stringResource(R.string.due_on, date.format(dateFmt("yMMMd")))
+                    }
                 )
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Notify on weekends", style = MaterialTheme.typography.bodyLarge)
-                    Text("Off: skips Saturday and Sunday and notifies on Monday.", style = MaterialTheme.typography.bodySmall, color = muted)
+                    Text(stringResource(R.string.notify_weekends), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.notify_weekends_hint), style = MaterialTheme.typography.bodySmall, color = muted)
                 }
                 Switch(checked = weekends, onCheckedChange = { weekends = it })
             }
-            Text("Icon", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.icon), style = MaterialTheme.typography.labelLarge)
             ReminderIcons.chunked(6).forEach { rowItems ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     rowItems.forEach { (k, img) ->
@@ -1101,7 +1194,7 @@ fun FormSheet(
                     }
                 }
             }
-            Text("Color", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.color), style = MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 ReminderColors.forEachIndexed { i, c ->
                     Box(
@@ -1118,7 +1211,7 @@ fun FormSheet(
                 if (preview.isNotEmpty()) DatePreview(preview, date, !limited)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
                 Spacer(Modifier.width(8.dp))
                 Button(
                     enabled = valid,
@@ -1132,7 +1225,7 @@ fun FormSheet(
                             onEdit(editing, EditData(title.trim(), n, date, icon, color, weekends, r))
                         }
                     }
-                ) { Text("Save") }
+                ) { Text(stringResource(R.string.save)) }
             }
         }
     }
@@ -1149,9 +1242,9 @@ fun FormSheet(
                         date = nd
                     }
                     picker = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.ok)) }
             },
-            dismissButton = { TextButton(onClick = { picker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { picker = false }) { Text(stringResource(R.string.cancel)) } }
         ) { DatePicker(st) }
     }
 }
@@ -1173,6 +1266,7 @@ fun SearchResults(
     onChangeDone: (Occ) -> Unit,
     onGo: (Occ) -> Unit
 ) {
+    val res = LocalContext.current.resources
     val q = normalize(query.trim())
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val results = remember(q, reminders, states, earliest, last) {
@@ -1196,13 +1290,13 @@ fun SearchResults(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (q.isEmpty()) {
-            item { Text("Type to search titles and notes.", color = muted) }
+            item { Text(stringResource(R.string.type_to_search), color = muted) }
         } else if (results.isEmpty()) {
-            item { Text("No results.", color = muted) }
+            item { Text(stringResource(R.string.no_results), color = muted) }
         } else {
             item {
                 Text(
-                    "${results.size} ${if (results.size == 1) "result" else "results"}",
+                    res.plural(R.plurals.results_count, results.size),
                     Modifier.padding(start = 8.dp),
                     style = MaterialTheme.typography.labelLarge,
                     color = muted

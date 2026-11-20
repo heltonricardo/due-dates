@@ -43,12 +43,9 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.util.Locale
 
 private val OccKey = ActionParameters.Key<String>("occ_key")
-private val widgetDate = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 private val WidgetRed = Color(0xFFE5484D)
 
 class DueWidget : GlanceAppWidget() {
@@ -103,12 +100,18 @@ private fun WidgetContent(items: List<Occ>, today: LocalDate) {
                 style = TextStyle(color = GlanceTheme.colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             )
             if (overdueCount > 0) {
-                Text("$overdueCount overdue", style = TextStyle(color = red, fontSize = 12.sp, fontWeight = FontWeight.Medium))
+                Text(
+                    context.resources.plural(R.plurals.count_overdue, overdueCount),
+                    style = TextStyle(color = red, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                )
             }
         }
         Spacer(GlanceModifier.height(8.dp))
         if (items.isEmpty()) {
-            Text("All caught up", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 14.sp))
+            Text(
+                context.getString(R.string.all_caught_up),
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 14.sp)
+            )
         } else {
             LazyColumn {
                 items(items.take(15), itemId = { it.key.hashCode().toLong() }) { o -> WidgetRow(o, today, open) }
@@ -119,12 +122,13 @@ private fun WidgetContent(items: List<Occ>, today: LocalDate) {
 
 @Composable
 private fun WidgetRow(o: Occ, today: LocalDate, open: Action) {
+    val res = LocalContext.current.resources
     val late = o.overdue(today)
     val sub = buildString {
-        append(o.dueDate.format(widgetDate))
+        append(o.dueDate.format(dateFmt("MMMd")))
         if (late) {
-            val days = ChronoUnit.DAYS.between(o.dueDate, today)
-            append(" · $days ${if (days == 1L) "day" else "days"} overdue")
+            append(" · ")
+            append(res.plural(R.plurals.days_overdue, ChronoUnit.DAYS.between(o.dueDate, today).toInt()))
         }
     }
     Row(
