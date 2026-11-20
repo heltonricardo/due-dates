@@ -57,6 +57,8 @@
     <string name="theme">Tema</string>
     <string name="theme_light">Claro</string>
     <string name="theme_dark">Escuro</string>
+    <string name="language">Idioma</string>
+    <string name="language_system">Sistema</string>
     <string name="backup">Backup</string>
     <string name="export">Exportar</string>
     <string name="import_">Importar</string>

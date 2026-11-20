@@ -3,6 +3,7 @@ package app.vercel.heton.duedates
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -53,9 +54,10 @@ class DueWidget : GlanceAppWidget() {
         val dao = Db.get(context).dao()
         val today = LocalDate.now()
         val items = widgetItems(dao.remindersNow(), dao.statesNow(), today)
+        val ctx = localized(context)
         provideContent {
             GlanceTheme {
-                WidgetContent(items, today)
+                WidgetContent(items, today, ctx)
             }
         }
     }
@@ -78,8 +80,7 @@ class MarkDoneAction : ActionCallback {
 }
 
 @Composable
-private fun WidgetContent(items: List<Occ>, today: LocalDate) {
-    val context = LocalContext.current
+private fun WidgetContent(items: List<Occ>, today: LocalDate, context: Context) {
     val name = context.getString(R.string.app_name)
     val open = actionStartActivity(Intent(context, MainActivity::class.java))
     val red = ColorProvider(WidgetRed)
@@ -114,15 +115,14 @@ private fun WidgetContent(items: List<Occ>, today: LocalDate) {
             )
         } else {
             LazyColumn {
-                items(items.take(15), itemId = { it.key.hashCode().toLong() }) { o -> WidgetRow(o, today, open) }
+                items(items.take(15), itemId = { it.key.hashCode().toLong() }) { o -> WidgetRow(o, today, open, context.resources) }
             }
         }
     }
 }
 
 @Composable
-private fun WidgetRow(o: Occ, today: LocalDate, open: Action) {
-    val res = LocalContext.current.resources
+private fun WidgetRow(o: Occ, today: LocalDate, open: Action, res: Resources) {
     val late = o.overdue(today)
     val sub = buildString {
         append(o.dueDate.format(dateFmt("MMMd")))

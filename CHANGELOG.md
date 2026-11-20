@@ -1,12 +1,26 @@
 # Changelog
 
+## 1.5
+
+### Added
+
+- **Language setting:** Settings > Language lets you choose System, English or Português. System follows the language of the device. The change applies immediately.
+
+### Changed
+
+- Notifications and the widget use the language chosen in the app. Notifications already shown keep the previous language.
+- The notification channel name changes language only with the next notification.
+- The app no longer appears in the system per-app language list (Settings > System > Languages > App languages). Language is now set only inside the app.
+
 ## 1.4
 
 ### Added
-- **Portuguese (Brazil) translation:** the whole interface, the widget and the notifications are now available in English (US) and Portuguese (Brazil). The app follows the system language. On Android 13 and later, the language can also be set for this app only in the system settings (Settings > Apps > Due Dates > Language).
+
+- **Portuguese (Brazil) translation:** the whole interface, the widget and the notifications are now available in English (US) and Portuguese (Brazil).
 
 ### Changed
-- Dates and times follow the language and region of the device. The notification time picker uses the 12-hour or 24-hour format set in the system.
+
+- Dates and times follow the language of the device. The notification time picker uses the 12-hour or 24-hour format set in the system.
 
 ## 1.3
 

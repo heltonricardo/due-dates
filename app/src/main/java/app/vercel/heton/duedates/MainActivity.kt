@@ -2,6 +2,7 @@ package app.vercel.heton.duedates
 
 import android.Manifest
 import android.app.Application
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -113,6 +114,8 @@ class VM(app: Application) : AndroidViewModel(app) {
 
     fun setDark(dark: Boolean) = update(_settings.value.copy(dark = dark))
 
+    fun setLang(lang: String) = update(_settings.value.copy(lang = lang))
+
     private fun update(s: AppSettings) {
         Prefs.save(getApplication<Application>(), s)
         _settings.value = s
@@ -121,6 +124,11 @@ class VM(app: Application) : AndroidViewModel(app) {
 
 class MainActivity : ComponentActivity() {
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private var startLang = ""
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(localized(newBase))
+    }
 
     private fun applyBars(dark: Boolean) {
         val style = if (dark) {
@@ -133,6 +141,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        startLang = Prefs.load(this).lang
         applyBars(Prefs.load(this).dark)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -144,6 +153,7 @@ class MainActivity : ComponentActivity() {
             val vm: VM = viewModel()
             val settings by vm.settings.collectAsState()
             LaunchedEffect(settings.dark) { applyBars(settings.dark) }
+            LaunchedEffect(settings.lang) { if (settings.lang != startLang) recreate() }
             DueDatesTheme(settings.dark) {
                 Root(vm)
             }

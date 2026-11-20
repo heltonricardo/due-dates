@@ -396,6 +396,7 @@ fun Root(vm: VM) {
             settings = settings,
             onTime = { h, m -> vm.setNotifyTime(h, m) },
             onDark = { vm.setDark(it) },
+            onLang = { vm.setLang(it) },
             onExport = { uri ->
                 showSettings = false
                 vm.exportTo(uri) { ok -> scope.launch { snackbar.showSnackbar(if (ok) sBackupSaved else sExportFailed) } }
@@ -802,6 +803,7 @@ fun SettingsSheet(
     settings: AppSettings,
     onTime: (Int, Int) -> Unit,
     onDark: (Boolean) -> Unit,
+    onLang: (String) -> Unit,
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
     onDismiss: () -> Unit
@@ -859,6 +861,22 @@ fun SettingsSheet(
                     shape = SegmentedButtonDefaults.itemShape(1, 2),
                     icon = {}
                 ) { Text(stringResource(R.string.theme_dark)) }
+            }
+            Text(stringResource(R.string.language), style = MaterialTheme.typography.labelLarge)
+            val languages = listOf(
+                "" to stringResource(R.string.language_system),
+                "en" to stringResource(R.string.language_english),
+                "pt-BR" to stringResource(R.string.language_portuguese)
+            )
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                languages.forEachIndexed { i, (tag, label) ->
+                    SegmentedButton(
+                        selected = settings.lang == tag,
+                        onClick = { onLang(tag) },
+                        shape = SegmentedButtonDefaults.itemShape(i, languages.size),
+                        icon = {}
+                    ) { Text(label, maxLines = 1) }
+                }
             }
             Text(stringResource(R.string.backup), style = MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

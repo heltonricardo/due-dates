@@ -116,7 +116,8 @@ object Notifier {
             .build()
     }
 
-    fun showAll(context: Context, list: List<Occ>, today: LocalDate) {
+    fun showAll(base: Context, list: List<Occ>, today: LocalDate) {
+        val context = localized(base)
         val nm = manager(context)
         if (list.size > MAX_INDIVIDUAL) {
             list.forEach { post(context, nm, it, today, true) }
@@ -127,7 +128,8 @@ object Notifier {
         }
     }
 
-    fun refreshSummary(context: Context) {
+    fun refreshSummary(base: Context) {
+        val context = localized(base)
         val nm = context.getSystemService(NotificationManager::class.java)
         val active = nm.activeNotifications
         if (active.none { it.id == SUMMARY_ID }) return
