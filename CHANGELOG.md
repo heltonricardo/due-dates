@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6
+
+### Changed
+
+- **Status colors:** overdue is red, upcoming uses the theme's primary color and done is green everywhere they appear. In the month header summary each count now has its own status color and the bullets between them are gray, instead of the whole line turning red when something is overdue.
+- The "Done" section title and the done counts in the overview use the same green.
+
 ## 1.5
 
 ### Added

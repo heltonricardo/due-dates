@@ -104,10 +104,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -119,6 +122,7 @@ import java.text.Normalizer
 import java.time.temporal.ChronoUnit
 
 private val Red = Color(0xFFE5484D)
+private val DoneColor = Color(0xFF2FB36D)
 
 data class Ask(val o: Occ, val edit: EditData?)
 
@@ -524,12 +528,22 @@ fun MonthPage(
     val tertiary = MaterialTheme.colorScheme.tertiary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val nothing = stringResource(R.string.nothing_scheduled)
-    val summary = listOfNotNull(
-        if (overdue.isNotEmpty()) res.plural(R.plurals.count_overdue, overdue.size) else null,
-        if (dueToday.isNotEmpty()) res.plural(R.plurals.count_due_today, dueToday.size) else null,
-        if (upcoming.isNotEmpty()) res.plural(R.plurals.count_upcoming, upcoming.size) else null,
-        if (done.isNotEmpty()) res.plural(R.plurals.count_done, done.size) else null
-    ).joinToString(" · ").ifEmpty { nothing }
+    val parts = listOfNotNull(
+        if (overdue.isNotEmpty()) res.plural(R.plurals.count_overdue, overdue.size) to Red else null,
+        if (dueToday.isNotEmpty()) res.plural(R.plurals.count_due_today, dueToday.size) to tertiary else null,
+        if (upcoming.isNotEmpty()) res.plural(R.plurals.count_upcoming, upcoming.size) to primary else null,
+        if (done.isNotEmpty()) res.plural(R.plurals.count_done, done.size) to DoneColor else null
+    )
+    val summary = buildAnnotatedString {
+        if (parts.isEmpty()) {
+            append(nothing)
+        } else {
+            parts.forEachIndexed { i, (text, color) ->
+                if (i > 0) withStyle(SpanStyle(color = muted)) { append(" · ") }
+                withStyle(SpanStyle(color = color)) { append(text) }
+            }
+        }
+    }
     val sFirst = stringResource(R.string.footer_first)
     val sOpenEnded = stringResource(R.string.footer_open_ended)
     val sLast = stringResource(R.string.footer_last)
@@ -542,8 +556,8 @@ fun MonthPage(
     val sUpcoming = stringResource(R.string.section_upcoming)
     val sDone = stringResource(R.string.section_done)
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(start = 24.dp, end = 128.dp, top = 12.dp, bottom = 8.dp)) {
-            Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenOverview)) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp)) {
+            Column(Modifier.padding(end = 104.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenOverview)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${ym.year}", style = MaterialTheme.typography.labelLarge, color = muted)
                     Icon(
@@ -558,7 +572,7 @@ fun MonthPage(
             Text(
                 summary,
                 style = MaterialTheme.typography.titleSmall,
-                color = if (overdue.isNotEmpty()) Red else muted
+                color = muted
             )
             if (ym != cur) {
                 TextButton(onClick = onToday, contentPadding = PaddingValues(0.dp)) {
@@ -574,7 +588,7 @@ fun MonthPage(
             section(sOverdue, overdue, Red, today, onToggle, onEdit, onDelete, onChangeDone)
             section(sDueToday, dueToday, tertiary, today, onToggle, onEdit, onDelete, onChangeDone)
             section(sUpcoming, upcoming, primary, today, onToggle, onEdit, onDelete, onChangeDone)
-            section(sDone, done, muted, today, onToggle, onEdit, onDelete, onChangeDone)
+            section(sDone, done, DoneColor, today, onToggle, onEdit, onDelete, onChangeDone)
             if (footer.isNotEmpty()) {
                 item(key = "footer") {
                     Text(
@@ -785,7 +799,7 @@ private fun MonthRow(stat: MonthStat, current: Boolean, onClick: () -> Unit) {
                 }
                 if (stat.overdue > 0) Pill(res.plural(R.plurals.count_overdue, stat.overdue), Red)
                 if (stat.upcoming > 0) Pill(res.plural(R.plurals.count_upcoming, stat.upcoming), MaterialTheme.colorScheme.primary)
-                if (stat.done > 0) Pill(res.plural(R.plurals.count_done, stat.done), muted)
+                if (stat.done > 0) Pill(res.plural(R.plurals.count_done, stat.done), DoneColor)
             }
         }
     }
